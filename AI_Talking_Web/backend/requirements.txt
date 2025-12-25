@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+requests
+httpx
+openai
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+python-dateutil

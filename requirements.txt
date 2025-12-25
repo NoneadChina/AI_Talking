@@ -1,0 +1,6 @@
+openai>=1.0.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+PyQt5>=5.15.0
+markdown>=3.10.0
+pygments>=2.19.0

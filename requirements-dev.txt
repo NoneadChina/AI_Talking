@@ -1,0 +1,17 @@
+# 静态代码分析工具
+flake8>=7.0.0          # 代码风格检查
+mypy>=1.10.0           # 类型检查
+black>=24.0.0          # 代码格式化
+isort>=5.13.0          # 导入排序
+bandit>=1.7.10         # 安全检查
+pytest>=8.0.0          # 测试框架
+pytest-cov>=5.0.0      # 测试覆盖率
+pre-commit>=3.6.0      # 预提交钩子
+
+# 项目依赖（与requirements.txt同步）
+openai>=1.0.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+PyQt5>=5.15.0
+markdown>=3.10.0
+pygments>=2.19.0
