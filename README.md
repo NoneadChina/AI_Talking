@@ -1,91 +1,91 @@
 # AI Talking
 
 
-AI Talking 是一个功能强大的AI对话系统，支持单聊、讨论、辩论等多种模式，同时提供桌面应用和Web应用两种部署方式。
+AI Talking is a powerful AI conversation system that supports single chat, discussion, debate, and other modes, with both desktop and web application deployment options.
 
-## 项目结构
+## Project Structure
 
-项目分为三个主要部分：
+The project consists of three main parts:
 
-1. **AI_Talking** - 新版桌面应用，采用MVC架构，代码模块化，支持单聊、讨论、辩论和批量处理等多种模式
-   - 采用PyQt5框架开发GUI
-   - 支持OpenAI、DeepSeek和Ollama API
-   - 模块化设计，代码结构清晰
-   - 支持多轮对话和历史记录管理
+1. **AI_Talking** - New desktop application with MVC architecture, modular code, supporting single chat, discussion, debate, and batch processing modes
+   - Developed with PyQt5 framework for GUI
+   - Supports OpenAI, DeepSeek, and Ollama APIs
+   - Modular design with clear code structure
+   - Supports multi-turn conversations and history management
 
-2. **AI_Talking_Web** - Web应用，前后端分离，支持在线使用
-   - 前端使用TypeScript开发
-   - 后端使用FastAPI框架
-   - 支持实时AI对话和讨论
-   - 提供完整的API文档
+2. **AI_Talking_Web** - Web application with separated front-end and back-end, supporting online use
+   - Front-end developed with TypeScript
+   - Back-end using FastAPI framework
+   - Supports real-time AI conversations and discussions
+   - Provides complete API documentation
 
-3. **Chat2Chat** - 老版桌面应用，单文件架构，功能完整，适合快速部署和使用
-   - 轻量级设计，易于使用
-   - 支持基本的AI对话功能
-   - 适合简单场景使用
+3. **Chat2Chat** - Old desktop application with single-file architecture, complete functionality, suitable for quick deployment and use
+   - Lightweight design, easy to use
+   - Supports basic AI conversation functions
+   - Suitable for simple scenarios
 
-## 功能特点
+## Features
 
-### 核心功能
+### Core Features
 
-- 💬 **单聊模式**：与AI进行一对一聊天，支持多种AI模型和API
-- 🔄 **讨论模式**：两个AI围绕指定主题进行深入讨论
-- ⚖️ **辩论模式**：两个AI围绕指定主题进行结构化辩论
-- 📝 **历史管理**：查看、编辑、复制、删除和管理聊天历史，支持批量操作
-- 🔧 **API配置**：统一管理多种API密钥和系统提示词
-- 📊 **批量处理**：支持批量处理多个讨论主题，提高效率
-- 📋 **关于我们**：查看应用版本和开发团队信息
-- 🌐 **国际化支持**：支持多种语言界面，可自由切换
+- 💬 **Single Chat Mode**: One-on-one chat with AI, supporting multiple AI models and APIs
+- 🔄 **Discussion Mode**: Two AIs conduct in-depth discussions on specified topics
+- ⚖️ **Debate Mode**: Two AIs engage in structured debates on specified topics
+- 📝 **History Management**: View, edit, copy, delete, and manage chat history, supporting batch operations
+- 🔧 **API Configuration**: Unified management of multiple API keys and system prompts
+- 📊 **Batch Processing**: Support batch processing of multiple discussion topics to improve efficiency
+- 📋 **About Us**: View application version and development team information
+- 🌐 **Internationalization Support**: Support multiple language interfaces, freely switchable
 
-### 技术特点
+### Technical Features
 
-- 🌟 **现代化架构**：桌面应用采用MVC架构，Web应用采用前后端分离
-- 🔌 **多API支持**：支持OpenAI、DeepSeek和Ollama API
-- 🎨 **友好界面**：直观易用的图形用户界面，支持多种主题
-- 📱 **跨平台**：支持Windows、macOS和Linux
-- 🔒 **安全可靠**：完善的错误处理和资源管理
-- 📈 **高性能**：优化的API调用和资源管理
-- 🧪 **完善测试**：包含单元测试、集成测试和UI测试
+- 🌟 **Modern Architecture**: Desktop application adopts MVC architecture, web application adopts front-end and back-end separation
+- 🔌 **Multi-API Support**: Supports OpenAI, DeepSeek, and Ollama APIs
+- 🎨 **Friendly Interface**: Intuitive and easy-to-use graphical user interface, supporting multiple themes
+- 📱 **Cross-Platform**: Supports Windows, macOS, and Linux
+- 🔒 **Secure and Reliable**: Perfect error handling and resource management
+- 📈 **High Performance**: Optimized API calls and resource management
+- 🧪 **Comprehensive Testing**: Includes unit tests, integration tests, and UI tests
 
-## 安装和使用
+## Installation and Usage
 
-### 1. AI_Talking（新版桌面应用）
+### 1. AI_Talking (New Desktop Application)
 
-#### 安装依赖
+#### Install Dependencies
 
 ```bash
 cd AI_Talking
 pip install -r ../requirements.txt
 ```
 
-#### 运行应用
+#### Run Application
 
 ```bash
 cd AI_Talking
 python src/main.py
 ```
 
-#### 快速启动
+#### Quick Start
 
-Windows用户可直接运行 `run_app.bat` 脚本启动应用。
+Windows users can directly run the `run_app.bat` script to start the application.
 
-### 2. AI_Talking_Web（Web应用）
+### 2. AI_Talking_Web (Web Application)
 
-#### 启动完整服务
+#### Start Complete Service
 
 ```bash
 cd AI_Talking_Web
 python start_server.py
 ```
 
-#### 单独启动后端服务
+#### Start Backend Service Separately
 
 ```bash
 cd AI_Talking_Web
 python backend/main.py
 ```
 
-#### 前端开发模式
+#### Frontend Development Mode
 
 ```bash
 cd AI_Talking_Web
@@ -93,285 +93,285 @@ npm install
 npm run dev
 ```
 
-#### 前端构建
+#### Frontend Build
 
 ```bash
 cd AI_Talking_Web
 npm run build
 ```
 
-### 3. Chat2Chat（老版桌面应用）
+### 3. Chat2Chat (Old Desktop Application)
 
-#### 运行应用
+#### Run Application
 
 ```bash
 cd Chat2Chat
 python chat_gui.py
 ```
 
-## 配置API密钥
+## Configure API Keys
 
-### 桌面应用
+### Desktop Application
 
-1. 启动应用后，点击"API设置"标签页
-2. 配置所需的API密钥和系统提示词
-3. 点击"保存设置"按钮
+1. After starting the application, click the "API Settings" tab
+2. Configure the required API keys and system prompts
+3. Click the "Save Settings" button
 
-### Web应用
+### Web Application
 
-1. 访问Web应用
-2. 点击"设置"标签页
-3. 配置所需的API密钥和系统提示词
-4. 点击"保存设置"按钮
+1. Access the web application
+2. Click the "Settings" tab
+3. Configure the required API keys and system prompts
+4. Click the "Save Settings" button
 
-## 环境变量配置
+## Environment Variable Configuration
 
-您也可以直接编辑`.env`文件来配置API密钥。项目根目录提供了`.env使用说明.md`文件，详细说明了各配置项的使用方法。
+You can also directly edit the `.env` file to configure API keys. The project root directory provides a `.env使用说明.md` file that details the usage of each configuration item.
 
 ```
-# Ollama API设置
+# Ollama API Settings
 OLLAMA_BASE_URL=http://localhost:11434
 
-# OpenAI API设置
+# OpenAI API Settings
 OPENAI_API_KEY=your_openai_api_key
 
-# DeepSeek API设置
+# DeepSeek API Settings
 DEEPSEEK_API_KEY=your_deepseek_api_key
 
-# 聊天系统提示词设置
+# Chat System Prompt Settings
 CHAT_SYSTEM_PROMPT=
 
-#讨论系统提示词设置
+# Discussion System Prompt Settings
 DISCUSSION_SYSTEM_PROMPT=
 DISCUSSION_AI1_SYSTEM_PROMPT=
 DISCUSSION_AI2_SYSTEM_PROMPT=
 
-# 辩论系统提示词设置
+# Debate System Prompt Settings
 DEBATE_SYSTEM_PROMPT=
 DEBATE_AI1_PROMPT=
 DEBATE_AI2_PROMPT=
 
-# 专家AI3系统提示词
+# Expert AI3 System Prompt
 EXPERT_AI3_SYSTEM_PROMPT=
 
-# 裁判AI3系统提示词
+# Judge AI3 System Prompt
 JUDGE_AI3_SYSTEM_PROMPT=
 ```
 
-## 使用指南
+## Usage Guide
 
-### 单聊模式
+### Single Chat Mode
 
-1. 选择"聊天"标签页
-2. 选择AI模型和API类型
-3. 输入您的问题或消息
-4. 点击"发送"按钮
-5. 等待AI回复
+1. Select the "Chat" tab
+2. Choose AI model and API type
+3. Enter your question or message
+4. Click the "Send" button
+5. Wait for AI response
 
-### 讨论模式
+### Discussion Mode
 
-1. 选择"讨论"标签页
-2. 输入讨论主题
-3. 选择两个AI模型和API类型
-4. 设置讨论轮数和温度参数
-5. 点击"开始讨论"按钮
-6. 查看讨论过程和结果
+1. Select the "Discussion" tab
+2. Enter discussion topic
+3. Choose two AI models and API types
+4. Set discussion rounds and temperature parameters
+5. Click the "Start Discussion" button
+6. View discussion process and results
 
-### 辩论模式
+### Debate Mode
 
-1. 选择"辩论"标签页
-2. 输入辩论主题
-3. 选择两个AI模型和API类型（正方和反方）
-4. 设置辩论轮数和温度参数
-5. 点击"开始辩论"按钮
-6. 查看辩论过程和结果
+1. Select the "Debate" tab
+2. Enter debate topic
+3. Choose two AI models and API types (pro and con sides)
+4. Set debate rounds and temperature parameters
+5. Click the "Start Debate" button
+6. View debate process and results
 
-### 批量处理
+### Batch Processing
 
-1. 选择"批量处理"标签页
-2. 输入多个讨论主题，每行一个
-3. 选择AI模型和API类型
-4. 设置讨论参数
-5. 点击"开始处理"按钮
-6. 查看处理结果
+1. Select the "Batch Processing" tab
+2. Enter multiple discussion topics, one per line
+3. Choose AI model and API type
+4. Set discussion parameters
+5. Click the "Start Processing" button
+6. View processing results
 
-### 历史管理
+### History Management
 
-1. 选择"历史管理"标签页
-2. 浏览历史记录列表
-3. 点击记录查看详情
-4. 可以删除选中记录或清空所有记录
+1. Select the "History" tab
+2. Browse history list
+3. Click a record to view details
+4. You can delete selected records or clear all records
 
-### API设置
+### API Settings
 
-1. 选择"API设置"标签页
-2. 输入API密钥和系统提示词
-3. 点击"保存设置"按钮
+1. Select the "API Settings" tab
+2. Enter API keys and system prompts
+3. Click the "Save Settings" button
 
-### 关于我们
+### About Us
 
-1. 选择"关于我们"标签页
-2. 查看应用版本和开发团队信息
+1. Select the "About Us" tab
+2. View application version and development team information
 
-## 技术栈
+## Technology Stack
 
-### 桌面应用 (AI_Talking)
+### Desktop Application (AI_Talking)
 
-| 技术 | 用途 |
-|------|------|
-| Python | 主要编程语言 |
-| PyQt5 | GUI框架，构建桌面界面 |
-| FastAPI | 后端API服务 |
-| requests | HTTP请求处理 |
-| python-dotenv | 环境变量管理 |
-| markdown | Markdown渲染 |
-| pytest | 测试框架 |
-| Black | 代码格式化 |
+| Technology | Purpose |
+|------------|---------|
+| Python | Main programming language |
+| PyQt5 | GUI framework for building desktop interfaces |
+| FastAPI | Backend API service |
+| requests | HTTP request handling |
+| python-dotenv | Environment variable management |
+| markdown | Markdown rendering |
+| pytest | Testing framework |
+| Black | Code formatting |
 
-### Web应用 (AI_Talking_Web)
+### Web Application (AI_Talking_Web)
 
-| 技术 | 用途 |
-|------|------|
-| TypeScript | 前端开发语言 |
-| FastAPI | 后端框架 |
-| Axios | HTTP请求库 |
-| Marked | Markdown渲染 |
-| live-server | 开发服务器 |
-| Swagger UI | API文档生成 |
+| Technology | Purpose |
+|------------|---------|
+| TypeScript | Frontend development language |
+| FastAPI | Backend framework |
+| Axios | HTTP request library |
+| Marked | Markdown rendering |
+| live-server | Development server |
+| Swagger UI | API documentation generation |
 
-## API文档
+## API Documentation
 
-Web应用提供了完整的API文档，可通过以下方式访问：
+The web application provides complete API documentation, which can be accessed in the following ways:
 
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-## 性能优化
+## Performance Optimization
 
-### API调用优化
+### API Call Optimization
 
-- 🔄 **自动重试**：API调用失败时自动重试，提高可靠性
-- ⚡ **限流机制**：根据错误率动态调整请求频率
-- 📥 **批量请求**：合并多个API请求，减少网络开销
+- 🔄 **Auto-retry**: Automatically retry failed API calls to improve reliability
+- ⚡ **Rate limiting**: Dynamically adjust request frequency based on error rate
+- 📥 **Batch requests**: Combine multiple API requests to reduce network overhead
 
-### 资源管理
+### Resource Management
 
-- 🧹 **资源清理**：及时清理不再使用的资源
-- 🧵 **线程池**：使用线程池管理线程，避免线程过多
-- 📦 **上下文管理器**：安全管理资源
+- 🧹 **Resource cleanup**: Timely cleanup of unused resources
+- 🧵 **Thread pool**: Use thread pool to manage threads, avoiding too many threads
+- 📦 **Context manager**: Safe resource management
 
-## 安全设计
+## Security Design
 
-### API安全
+### API Security
 
-- 🔑 **安全存储**：API密钥加密存储
-- ✅ **输入验证**：严格验证所有输入
-- 🛡️ **CORS配置**：合理配置跨域访问
-- 🚦 **请求限流**：防止API滥用
+- 🔑 **Secure storage**: Encrypted storage of API keys
+- ✅ **Input validation**: Strict validation of all inputs
+- 🛡️ **CORS configuration**: Reasonable cross-domain access configuration
+- 🚦 **Request throttling**: Prevent API abuse
 
-### 数据安全
+### Data Security
 
-- 🔒 **数据加密**：敏感数据加密存储
-- 📋 **访问控制**：严格的访问控制
-- 📝 **安全日志**：日志中不包含敏感信息
+- 🔒 **Data encryption**: Encrypted storage of sensitive data
+- 📋 **Access control**: Strict access control
+- 📝 **Secure logging**: No sensitive information in logs
 
-## 监控和维护
+## Monitoring and Maintenance
 
-### 日志系统
+### Log System
 
-- 📊 **分级日志**：支持DEBUG、INFO、WARNING、ERROR、CRITICAL五个级别
-- 📝 **详细格式**：包含时间、级别、模块名、消息内容
-- 💾 **文件存储**：日志保存到文件，便于分析和调试
-- 📦 **日志轮转**：自动管理日志文件大小，防止占用过多磁盘空间
+- 📊 **Leveled logging**: Supports DEBUG, INFO, WARNING, ERROR, CRITICAL five levels
+- 📝 **Detailed format**: Includes time, level, module name, message content
+- 💾 **File storage**: Logs saved to files for easy analysis and debugging
+- 📦 **Log rotation**: Automatically manages log file size to prevent excessive disk space usage
 
-### 错误监控
+### Error Monitoring
 
-- 📈 **错误统计**：统计错误类型和数量
-- ⚠️ **错误告警**：错误率超过阈值时自动告警
-- 🔍 **错误分析**：详细的错误信息，便于定位问题
+- 📈 **Error statistics**: Statistics of error types and quantities
+- ⚠️ **Error alerts**: Automatic alerts when error rate exceeds threshold
+- 🔍 **Error analysis**: Detailed error information for easy problem locating
 
-## 开发指南
+## Development Guide
 
-### 代码风格
+### Code Style
 
-- Python: 使用Black进行代码格式化，遵循PEP8规范
-- TypeScript: 使用TypeScript编译器进行类型检查，遵循TypeScript最佳实践
-- 使用pre-commit钩子自动检查代码风格
+- Python: Use Black for code formatting, follow PEP8 specifications
+- TypeScript: Use TypeScript compiler for type checking, follow TypeScript best practices
+- Use pre-commit hooks to automatically check code style
 
-### 测试
+### Testing
 
-- 单元测试：测试单个模块的功能，位于`tests`目录
-- 集成测试：测试模块间的交互，确保系统整体功能正常
-- UI测试：测试用户界面的交互和响应
+- Unit tests: Test the functionality of individual modules, located in the `tests` directory
+- Integration tests: Test interactions between modules to ensure overall system functionality
+- UI tests: Test user interface interactions and responses
 
-### 构建
+### Build
 
-#### 桌面应用打包
+#### Desktop Application Packaging
 
 ```bash
 cd AI_Talking
 python -m PyInstaller --onefile --windowed --icon=../resources/icon.ico src/main.py
 ```
 
-#### Web应用构建
+#### Web Application Build
 
 ```bash
 cd AI_Talking_Web
 npm run build
 ```
 
-### 架构设计
+### Architecture Design
 
-项目采用分层架构设计，详细架构信息请参考 `ARCHITECTURE.md` 文件。
+The project adopts a layered architecture design. For detailed architecture information, please refer to the `ARCHITECTURE.md` file.
 
-## 版本说明
+## Version Description
 
-| 版本 | 说明 |
-|------|------|
-| v1.0 | 初始版本，支持基本的AI讨论功能 |
-| v2.0 | 重构为MVC架构，添加辩论和单聊模式 |
-| v3.0 | 添加Web应用，支持前后端分离 |
-| v4.0 | 优化性能，添加错误监控和资源管理 |
-| v5.0 | 完善测试用例，添加批量处理功能，优化用户界面 |
+| Version | Description |
+|---------|-------------|
+| v1.0 | Initial version, supporting basic AI discussion functionality |
+| v2.0 | Refactored to MVC architecture, added debate and single chat modes |
+| v3.0 | Added web application, supporting front-end and back-end separation |
+| v4.0 | Optimized performance, added error monitoring and resource management |
+| v5.0 | Improved test cases, added batch processing functionality, optimized user interface |
 
-## 未来规划
+## Future Plans
 
-1. 🌐 **多语言支持**：支持多种语言界面
-2. ☁️ **云同步**：聊天历史云同步，支持多设备访问
-3. 🔌 **插件系统**：支持插件扩展，增强功能
-4. 📱 **移动端优化**：更好的移动端体验
-5. 🎙️ **语音对话**：支持实时语音对话
-6. 🎨 **主题定制**：支持自定义主题和样式
-7. 📊 **数据分析**：对话数据分析和可视化
-8. 🎯 **AI微调**：支持模型微调，提高对话质量
+1. 🌐 **Multi-language Support**: Support multiple language interfaces
+2. ☁️ **Cloud Synchronization**: Cloud synchronization of chat history, supporting multi-device access
+3. 🔌 **Plugin System**: Support plugin extensions to enhance functionality
+4. 📱 **Mobile Optimization**: Better mobile experience
+5. 🎙️ **Voice Conversation**: Support real-time voice conversation
+6. 🎨 **Theme Customization**: Support custom themes and styles
+7. 📊 **Data Analysis**: Dialogue data analysis and visualization
+8. 🎯 **AI Fine-tuning**: Support model fine-tuning to improve dialogue quality
 
-## 贡献
+## Contribution
 
-欢迎提交Issue和Pull Request！贡献指南如下：
+Welcome to submit Issues and Pull Requests! Contribution guidelines are as follows:
 
-1. Fork本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开Pull Request
+1. Fork this repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## 许可证
+## License
 
-本项目采用MIT许可证。详情请查看 `LICENSE` 文件。
+This project is licensed under the MIT License. For details, please see the `LICENSE` file.
 
-## 联系方式
+## Contact
 
-- 开发团队：NONEAD Corporation
-- 联系邮箱：support@nonead.com
-- 项目地址：https://github.com/NoneadChina/AI_Talking
+- Development Team: NONEAD Corporation
+- Contact Email: support@nonead.com
+- Project Address: [https://github.com/NONEAD/AI_Talking](https://github.com/NoneadChina/AI_Talking)
 
-## 致谢
+## Acknowledgments
 
-感谢所有为该项目做出贡献的开发者和用户！
+Thanks to all developers and users who have contributed to this project!
 
-## 相关文档
+## Related Documents
 
-- [架构设计文档](ARCHITECTURE.md)
-- [变更日志](CHANGELOG.md)
-- [环境变量使用说明](.env使用说明.md)
-- [代码审查报告](code_review_report.md)
+- [Architecture Design Document](ARCHITECTURE.md)
+- [Change Log](CHANGELOG.md)
+- [Environment Variable Usage Instructions](.env使用说明.md)
+- [Code Review Report](code_review_report.md)
