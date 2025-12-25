@@ -546,13 +546,11 @@ class DebateTabWidget(QWidget):
                             current_dir = os.path.dirname(current_dir)  # 再向上一级目录
 
                         # 使用本地logo图片，转换为Base64编码嵌入HTML
-                        import os
                         import base64
 
-                        # 构建本地logo图片路径
-                        logo_path = os.path.join(
-                            current_dir, "resources", "noneadLogo.png"
-                        )
+                        # 使用资源管理器获取logo路径
+                        from utils.resource_manager import ResourceManager
+                        logo_path = ResourceManager.get_resource_path("noneadLogo.png")
 
                         # 将图片转换为Base64编码
                         try:

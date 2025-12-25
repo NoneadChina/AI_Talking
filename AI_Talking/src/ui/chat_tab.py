@@ -10,6 +10,7 @@ import threading
 import markdown
 from utils.logger_config import get_logger
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -185,19 +186,20 @@ class ChatTabWidget(QWidget):
             current_dir = os.path.dirname(current_dir)  # 向上一级目录
             current_dir = os.path.dirname(current_dir)  # 再向上一级目录
 
-        # 构建Logo文件路径
-        logo_path = os.path.join(current_dir, "resources", "noneadLogo.png")
-
         # 创建Logo标签
         logo_label = QLabel()
-        pixmap = QPixmap(logo_path)
-        # 缩放logo到合适大小（放大一倍）
-        scaled_pixmap = pixmap.scaled(
-            200, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-        logo_label.setPixmap(scaled_pixmap)
-        logo_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
+        # 使用资源管理器加载并缩放logo
+        from utils.resource_manager import ResourceManager
+        pixmap = ResourceManager.load_pixmap("noneadLogo.png", 200, 60)
+        if pixmap:
+            logo_label.setPixmap(pixmap)
+            logo_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        else:
+            # logo加载失败，显示文本标识
+            logo_label.setText("NONEAD")
+            logo_label.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
+            logo_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            logo_label.setStyleSheet("color: #333;")
         # 添加logo到布局
         temp_layout.addWidget(logo_label, alignment=Qt.AlignVCenter)
 
@@ -802,13 +804,11 @@ class ChatTabWidget(QWidget):
                             current_dir = os.path.dirname(current_dir)  # 再向上一级目录
 
                         # 使用本地logo图片，转换为Base64编码嵌入HTML
-                        import os
                         import base64
 
-                        # 构建本地logo图片路径
-                        logo_path = os.path.join(
-                            current_dir, "resources", "noneadLogo.png"
-                        )
+                        # 使用资源管理器获取logo路径
+                        from utils.resource_manager import ResourceManager
+                        logo_path = ResourceManager.get_resource_path("noneadLogo.png")
 
                         # 将图片转换为Base64编码
                         try:

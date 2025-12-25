@@ -682,10 +682,9 @@ class APISettingsWidget(QWidget):
                 # 先保存设置，确保环境变量被更新
                 # 但不弹出消息框，由language_changed信号的处理函数统一处理
                 self.save_settings(show_message=False)
-                # 设置当前语言
+                # 设置当前语言 - 这会自动发出language_changed信号，触发所有组件的reinit_ui
                 i18n.set_language(lang_code)
-                # 更新界面
-                self.reinit_ui()
+                # 不再需要手动调用reinit_ui，因为language_changed信号会自动触发
             finally:
                 # 重新连接信号
                 self.language_combo.currentIndexChanged.connect(

@@ -250,24 +250,5 @@ class BatchControlsPanel(QWidget):
         self.start_batch_button.setText(i18n.translate("batch_start_processing"))
         self.stop_batch_button.setText(i18n.translate("batch_stop_processing"))
 
-        # 更新状态标签
-        current_status = self.status_label.text()
-
-        # 检查当前状态是否是任何语言的标准状态，如果是则更新为当前语言
-        status_values = {
-            "batch_ready": ["batch_ready", "就绪", "就緒", "Ready", "准备就绪"],
-            "batch_processing": [
-                "batch_processing",
-                "正在处理",
-                "正在處理",
-                "Processing",
-            ],
-            "batch_completed": ["batch_completed", "已完成", "已完成", "Completed"],
-            "batch_error": ["batch_error", "错误", "錯誤", "Error"],
-        }
-
-        for key, values in status_values.items():
-            if current_status in values:
-                # 如果当前状态是标准状态之一，更新为当前语言
-                self.status_label.setText(i18n.translate(key))
-                break
+        # 直接将状态重置为当前语言的"batch_ready"状态，不尝试匹配复杂的动态状态
+        self.status_label.setText(i18n.translate("batch_ready"))

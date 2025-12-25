@@ -54,39 +54,20 @@ class AboutTabWidget(QWidget):
         def create_about_logo_label():
             """创建关于页面的Logo标签"""
             try:
-                import os
-                import sys
-                from PyQt5.QtGui import QPixmap
-
-                # 获取当前目录
-                if getattr(sys, "frozen", False):
-                    # 打包后的可执行文件所在目录
-                    current_dir = os.path.dirname(sys.executable)
-                else:
-                    # 开发环境下的当前文件所在目录
-                    current_dir = os.path.dirname(os.path.abspath(__file__))
-                    current_dir = os.path.dirname(current_dir)  # 向上一级目录
-                    current_dir = os.path.dirname(current_dir)  # 再向上一级目录
-
-                # 构建Logo文件路径
-                logo_path = os.path.join(current_dir, "resources", "noneadLogo.png")
-
-                # 加载本地图片
-                logo_pixmap = QPixmap(logo_path)
-
-                # 调整图片大小（保持宽高比，平滑缩放）
-                scaled_pixmap = logo_pixmap.scaled(
-                    200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
                 logo_label = QLabel()
-                logo_label.setPixmap(scaled_pixmap)
-                logo_label.setAlignment(Qt.AlignCenter)
+                # 使用资源管理器加载并缩放logo
+                from utils.resource_manager import ResourceManager
+                pixmap = ResourceManager.load_pixmap("noneadLogo.png", 400, 400)
+                if pixmap:
+                    logo_label.setPixmap(pixmap)
+                    logo_label.setAlignment(Qt.AlignCenter)
+                else:
+                    logger.warning("Logo文件不存在或无法加载")
                 return logo_label
             except Exception as e:
-                # 如果图片加载失败，创建错误提示标签
-                error_label = QLabel(f"Logo加载失败: {str(e)}")
-                error_label.setStyleSheet("color: red")  # 设置错误文本颜色
-                return error_label
+                # 如果图片加载失败，创建空标签
+                logger.error(f"Logo加载失败: {str(e)}")
+                return QLabel()
 
         # 创建Logo标签
         self.logo_label = create_about_logo_label()
@@ -100,8 +81,17 @@ class AboutTabWidget(QWidget):
         self.app_name_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.app_name_label)
 
-        # 软件版本
-        self.version_label = QLabel(f"{i18n.translate('about_version')}0.3.5")
+        # 软件版本 - 使用绝对导入获取版本号
+        try:
+            import sys
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from src import __version__
+            version_text = f"{i18n.translate('about_version')}{__version__}"
+        except Exception as e:
+            logger.error(f"获取版本号失败: {str(e)}")
+            version_text = f"{i18n.translate('about_version')}0.3.6"
+        
+        self.version_label = QLabel(version_text)
         self.version_label.setStyleSheet("font-size: 16px; color: #666;")
         self.version_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.version_label)
@@ -203,7 +193,15 @@ class AboutTabWidget(QWidget):
 
         # 更新软件版本
         if hasattr(self, "version_label"):
-            self.version_label.setText(f"{i18n.translate('about_version')}0.3.5")
+            try:
+                import sys
+                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from src import __version__
+                version_text = f"{i18n.translate('about_version')}{__version__}"
+            except Exception as e:
+                logger.error(f"获取版本号失败: {str(e)}")
+                version_text = f"{i18n.translate('about_version')}0.3.6"
+            self.version_label.setText(version_text)
 
         # 更新联系方式标题
         if hasattr(self, "contact_label"):

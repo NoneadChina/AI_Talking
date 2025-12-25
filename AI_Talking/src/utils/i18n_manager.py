@@ -30,6 +30,12 @@ class I18nManager(QObject):
             "zh-TW": "繁体中文",
             "en": "English",
             "ja": "日本語",
+            "ko": "한국어",
+            "de": "Deutsch",
+            "es": "Español",
+            "fr": "Français",
+            "ar": "العربية",
+            "ru": "Русский",
         }
 
         # 翻译资源目录

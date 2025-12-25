@@ -102,23 +102,11 @@ class ControlsPanel(QWidget):
         self.setLayout(layout)
 
     def reinit_ui(self):
-        """重新初始化UI，用于语言切换时更新界面"""
-        # 更新状态标签
-        current_status = self.status_label.text()
-
-        # 检查当前状态是否是任何语言的标准状态，如果是则更新为当前语言
-        status_values = {
-            "ready": ["ready", "就绪", "就緒", "准备就绪"],
-            "processing": ["processing", "正在处理", "正在處理"],
-            "completed": ["completed", "已完成", "已完成"],
-            "error": ["error", "错误", "錯誤"],
-        }
-
-        for key, values in status_values.items():
-            if current_status in values:
-                # 如果当前状态是标准状态之一，更新为当前语言
-                self.status_label.setText(i18n.translate(key))
-                break
+        """
+        重新初始化UI，用于语言切换时更新界面
+        """
+        # 直接将状态重置为当前语言的"ready"状态，不尝试匹配复杂的动态状态
+        self.status_label.setText(i18n.translate("ready"))
 
         # 更新按钮文本
         self.save_history_button.setText(i18n.translate("save_history"))
