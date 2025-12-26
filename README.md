@@ -363,7 +363,7 @@ This project is licensed under the MIT License. For details, please see the `LIC
 
 - Development Team: NONEAD Corporation
 - Contact Email: support@nonead.com
-- Project Address: [https://github.com/NONEAD/AI_Talking](https://github.com/NoneadChina/AI_Talking)
+- Project Address: [https://github.com/NoneadChina/AI_Talking](https://github.com/NoneadChina/AI_Talking)
 
 ## Acknowledgments
 
