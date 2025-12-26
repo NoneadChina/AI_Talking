@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2025-12-26
+
+### Added
+- Added "修改" (Edit) button to discussion history bubbles
+- Added message editing functionality with auto-save feature
+
+### Changed
+- Updated button order in discussion history: Edit, Copy, Delete
+- Optimized all internationalization language packs for accuracy and brevity
+- Updated version number from 0.3.6 to 0.3.7
+- Updated configuration files (__init__.py, about_tab.py, AI_Talking_Setup.iss)
+- Created v0.3.7 RELEASE_NOTES.md and latest.json files
+
+### Fixed
+- Fixed button functionality in discussion and debate history
+- Ensured proper event binding for dynamically added elements
+- Fixed CSS selector issues for button targeting
+
 ## [0.3.6] - 2025-12-25
 
 ### Added

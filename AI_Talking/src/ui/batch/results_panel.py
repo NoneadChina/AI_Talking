@@ -390,5 +390,40 @@ class BatchResultsPanel(QWidget):
             # 更新为默认的处理结果标题
             self.result_group.setTitle(i18n.translate("batch_processing_results"))
 
-        # 重新初始化HTML内容，以更新页面标题和其他文本
-        self._init_web_content()
+        # 保存当前结果内容并重新初始化web内容
+        def save_and_reinit(html):
+            # 保存当前内容的body部分
+            saved_body_content = None
+            body_start = html.find("<body")
+            if body_start != -1:
+                body_end = html.find(">", body_start) + 1
+                body_close = html.rfind("</body>")
+                if body_close != -1:
+                    saved_body_content = html[body_end:body_close]
+            
+            # 重新初始化web内容，更新翻译文本
+            self._init_web_content()
+            
+            # 如果有保存的内容，恢复它
+            if saved_body_content:
+                # 等待新的web内容初始化完成后再恢复
+                def restore_content(new_html):
+                    # 找到新HTML的body标签位置
+                    new_body_start = new_html.find("<body")
+                    if new_body_start != -1:
+                        new_body_end = new_html.find(">", new_body_start) + 1
+                        new_body_close = new_html.rfind("</body>")
+                        if new_body_close != -1:
+                            # 构建新的HTML，保留新的头部，插入保存的body内容
+                            final_html = (
+                                new_html[:new_body_end]
+                                + saved_body_content
+                                + new_html[new_body_close:]
+                            )
+                            self.result_text.setHtml(final_html)
+                
+                # 获取新初始化的HTML结构
+                self.result_text.page().toHtml(restore_content)
+        
+        # 异步获取当前内容，在回调中执行保存和重新初始化
+        self.result_text.page().toHtml(save_and_reinit)

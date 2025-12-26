@@ -72,17 +72,21 @@ class ChatHistoryPanel(QWidget):
             <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
             <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
             <style>
-        body {{
+        html, body {{
             font-family: SimHei, Arial, sans-serif;
             font-size: 13pt;
             background-color: #fafafa;
             margin: 0;
             padding: 10px;
+            overflow-x: hidden;
+            max-width: 100%;
         }}
         .message-container {{
             margin-bottom: 20px;
             position: relative;
             display: flex;
+            overflow-x: hidden;
+            max-width: 100%;
         }}
         .placement-right {{
             justify-content: flex-end;
@@ -97,6 +101,7 @@ class ChatHistoryPanel(QWidget):
             display: flex;
             align-items: flex-start;
             max-width: 80%;
+            overflow-x: hidden;
         }}
         .icon {{
             font-size: 36px;
@@ -106,12 +111,16 @@ class ChatHistoryPanel(QWidget):
         }}
         .content-wrapper {{
             flex: 1;
+            overflow-x: hidden;
+            max-width: 100%;
         }}
         .sender-info {{
             display: flex;
             align-items: center;
             margin-bottom: 10px;
             font-size: 16px;
+            overflow-x: hidden;
+            max-width: 100%;
         }}
         .sender {{
             font-weight: bold;
@@ -127,6 +136,8 @@ class ChatHistoryPanel(QWidget):
             text-align: left;
             word-wrap: break-word;
             font-size: 13pt;
+            overflow-x: hidden;
+            max-width: 100%;
         }}
         .ai1-message {{
             background-color: #e3f2fd;
@@ -151,15 +162,17 @@ class ChatHistoryPanel(QWidget):
             margin: 12px auto;
             text-align: center;
             font-weight: bold;
-            white-space: nowrap;
-            max-width: none;
+            white-space: normal;
+            max-width: 100%;
             min-width: 200px;
             font-size: 13pt;
+            overflow-x: hidden;
         }}
         .message-actions {{
             display: none;
             margin-top: 5px;
             margin-left: 45px;
+            overflow-x: hidden;
         }}
         .message-container:hover .message-actions {{
             display: flex;
@@ -822,38 +835,42 @@ class ChatHistoryPanel(QWidget):
         # 更新聊天历史区域标题
         self.chat_history_group.setTitle(i18n.translate("discussion_history"))
 
-        # 保存当前聊天内容
-        current_content = None
-
-        def save_content(html):
-            nonlocal current_content
-            current_content = html
-
-        # 获取当前内容
-        self.chat_history_text.page().toHtml(save_content)
-
-        # 重新初始化web内容（包含翻译文本）
-        self.init_web_content()
-
-        # 如果有保存的内容，恢复它
-        if current_content:
-
-            def restore_content(html):
-                # 找到body标签的开始和结束位置
-                body_start = html.find("<body")
-                if body_start != -1:
-                    body_end = html.find(">", body_start) + 1
-                    body_close = html.rfind("</body>")
-                    if body_close != -1:
-                        # 构建新的HTML，保留头部，替换body内容
-                        new_html = (
-                            html[:body_end]
-                            + current_content[body_end:body_close]
-                            + html[body_close:]
-                        )
-                        self.chat_history_text.setHtml(new_html)
-                        # 显式调用initMessageActions()重新绑定按钮事件
-                        self.chat_history_text.page().runJavaScript("initMessageActions();")
-
-            # 先获取新初始化的HTML结构
-            self.chat_history_text.page().toHtml(restore_content)
+        # 保存当前聊天内容并重新初始化web内容
+        def save_and_reinit(html):
+            # 保存当前内容的body部分
+            saved_body_content = None
+            body_start = html.find("<body")
+            if body_start != -1:
+                body_end = html.find(">", body_start) + 1
+                body_close = html.rfind("</body>")
+                if body_close != -1:
+                    saved_body_content = html[body_end:body_close]
+            
+            # 重新初始化web内容（包含翻译文本）
+            self.init_web_content()
+            
+            # 如果有保存的内容，恢复它
+            if saved_body_content:
+                # 等待新的web内容初始化完成后再恢复
+                def restore_content(new_html):
+                    # 找到新HTML的body标签位置
+                    new_body_start = new_html.find("<body")
+                    if new_body_start != -1:
+                        new_body_end = new_html.find(">", new_body_start) + 1
+                        new_body_close = new_html.rfind("</body>")
+                        if new_body_close != -1:
+                            # 构建新的HTML，保留新的头部，插入保存的body内容
+                            final_html = (
+                                new_html[:new_body_end]
+                                + saved_body_content
+                                + new_html[new_body_close:]
+                            )
+                            self.chat_history_text.setHtml(final_html)
+                            # 显式调用initMessageActions()重新绑定按钮事件
+                            self.chat_history_text.page().runJavaScript("initMessageActions();")
+                
+                # 获取新初始化的HTML结构
+                self.chat_history_text.page().toHtml(restore_content)
+        
+        # 异步获取当前内容，在回调中执行保存和重新初始化
+        self.chat_history_text.page().toHtml(save_and_reinit)

@@ -89,7 +89,7 @@ class AboutTabWidget(QWidget):
             version_text = f"{i18n.translate('about_version')}{__version__}"
         except Exception as e:
             logger.error(f"获取版本号失败: {str(e)}")
-            version_text = f"{i18n.translate('about_version')}0.3.6"
+            version_text = f"{i18n.translate('about_version')}0.3.7"
         
         self.version_label = QLabel(version_text)
         self.version_label.setStyleSheet("font-size: 16px; color: #666;")
