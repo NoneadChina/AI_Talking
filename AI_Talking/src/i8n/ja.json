@@ -225,5 +225,17 @@
   "stop_discussion": "ディスカッションを停止",
   "setting_enter": "入力",
   "setting_key": "キー",
-  "setting_base_url": "ベースURL"
+  "setting_base_url": "ベースURL",
+  "debate_judgment_completed": "討論判定完了",
+  "setting_ollama_cloud": "Ollama Cloud",
+  "setting_ollama_cloud_key": "APIキー:",
+  "setting_ollama_cloud_url": "APIベースURL:",
+  "update_available": "New Version Available",
+  "update_available_message": "New version {version} found, would you like to download now?\n\nRelease Notes:\n{release_notes}",
+  "update_downloaded": "Update Downloaded",
+  "update_downloaded_message": "Update package has been downloaded, it will be installed when the application closes",
+  "pdf_exported": "Chat history has been exported to {path}",
+  "pdf_export_failed": "PDF generation failed",
+  "confirm_save": "設定を保存",
+  "confirm_save_msg": "設定を保存しますか？"
 }

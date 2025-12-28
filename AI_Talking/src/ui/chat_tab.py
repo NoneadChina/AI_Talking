@@ -125,8 +125,8 @@ class ChatTabWidget(QWidget):
         self.api_provider_label = QLabel(i18n.translate("chat_model_provider"))
         api_layout.addWidget(self.api_provider_label, alignment=Qt.AlignVCenter)
         self.chat_api_combo = QComboBox()
-        self.chat_api_combo.addItems(["ollama", "openai", "deepseek"])
-        self.chat_api_combo.setCurrentText("ollama")  # 默认选择ollama API
+        self.chat_api_combo.addItems(["Ollama", "OpenAI", "DeepSeek", "Ollama Cloud"])
+        self.chat_api_combo.setCurrentText("Ollama")  # 默认选择Ollama API
         self.chat_api_combo.setStyleSheet(
             "font-size: 9pt; padding: 4px; border: 1px solid #ddd; border-radius: 6px;"
         )
@@ -331,7 +331,7 @@ class ChatTabWidget(QWidget):
         """
         根据当前选择的API从真实API获取并更新模型列表
         """
-        from utils.ai_service import AIServiceFactory
+        from utils.model_manager import model_manager
 
         api = self.chat_api_combo.currentText()
         logger.info(f"更新聊天模型列表，当前API: {api}")
@@ -339,33 +339,70 @@ class ChatTabWidget(QWidget):
         # 清空现有模型列表
         self.chat_model_combo.clear()
 
-        models = []
-        try:
-            # 创建AI服务实例
-            ai_service = None
-            if api == "ollama":
-                base_url = self.api_settings_widget.get_ollama_base_url()
-                ai_service = AIServiceFactory.create_ai_service(
-                    "ollama", base_url=base_url
-                )
-            elif api == "openai":
-                api_key = self.api_settings_widget.get_openai_api_key()
-                ai_service = AIServiceFactory.create_ai_service(
-                    "openai", api_key=api_key
-                )
-            elif api == "deepseek":
-                api_key = self.api_settings_widget.get_deepseek_api_key()
-                ai_service = AIServiceFactory.create_ai_service(
-                    "deepseek", api_key=api_key
-                )
+        # 添加加载提示
+        self.chat_model_combo.addItem("加载中...")
 
-            if ai_service:
-                # 从AI服务获取模型列表
-                models = ai_service.get_models()
-        except Exception as e:
-            logger.error(f"获取{api}模型列表失败: {str(e)}")
+        if api == "Ollama":
+            # 异步加载Ollama模型
+            base_url = self.api_settings_widget.get_ollama_base_url()
+
+            def on_models_loaded(models):
+                self._on_chat_models_loaded(api, models)
+
+            def on_load_error(error):
+                logger.error(f"聊天Ollama模型加载失败: {error}")
+                self._on_chat_models_loaded(api, [])
+
+            model_manager.async_load_ollama_models(
+                base_url, on_models_loaded, on_load_error
+            )
+        elif api == "Ollama Cloud":
+            # 异步加载Ollama Cloud模型
+            def on_models_loaded(models):
+                self._on_chat_models_loaded(api, models)
+
+            def on_load_error(error):
+                logger.error(f"聊天Ollama Cloud模型加载失败: {error}")
+                self._on_chat_models_loaded(api, [])
+
+            model_manager.async_load_ollama_cloud_models(
+                on_models_loaded, on_load_error
+            )
+        else:
+            # 非Ollama API，使用同步加载
+            models = []
+            try:
+                from utils.ai_service import AIServiceFactory
+                
+                if api == "OpenAI":
+                    api_key = self.api_settings_widget.get_openai_api_key()
+                    ai_service = AIServiceFactory.create_ai_service("openai", api_key=api_key)
+                    models = ai_service.get_models()
+                elif api == "DeepSeek":
+                    api_key = self.api_settings_widget.get_deepseek_api_key()
+                    ai_service = AIServiceFactory.create_ai_service("deepseek", api_key=api_key)
+                    models = ai_service.get_models()
+            except Exception as e:
+                logger.error(f"获取{api}模型列表失败: {str(e)}")
+                if api == "OpenAI":
+                    models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
+                elif api == "DeepSeek":
+                    models = ["deepseek-chat", "deepseek-coder"]
+
+            self._on_chat_models_loaded(api, models)
+
+    def _on_chat_models_loaded(self, api, models):
+        """
+        聊天模型加载完成后的处理方法
+        """
+        # 清空模型列表（包括加载提示）
+        self.chat_model_combo.clear()
+
+        # 检查模型列表是否为空
+        if not models:
+            logger.error(f"聊天模型列表为空，API: {api}")
             # 如果API调用失败，使用默认模型列表
-            if api == "ollama":
+            if api == "Ollama":
                 models = [
                     "qwen3:14b",
                     "llama2:7b",
@@ -373,10 +410,12 @@ class ChatTabWidget(QWidget):
                     "gemma:2b",
                     "deepseek-v2:16b",
                 ]
-            elif api == "openai":
+            elif api == "OpenAI":
                 models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
-            elif api == "deepseek":
+            elif api == "DeepSeek":
                 models = ["deepseek-chat", "deepseek-coder"]
+            elif api == "Ollama Cloud":
+                models = ["llama3:70b", "llama3:8b", "gemma:7b", "mistral:7b"]
 
         # 添加模型列表
         if models:
@@ -469,20 +508,38 @@ class ChatTabWidget(QWidget):
 
             # 创建AI服务实例
             ai_service = None
-            if api == "ollama":
+            if api == "Ollama":
                 base_url = self.api_settings_widget.get_ollama_base_url()
                 ai_service = AIServiceFactory.create_ai_service(
                     "ollama", base_url=base_url
                 )
-            elif api == "openai":
+            elif api == "OpenAI":
                 api_key = self.api_settings_widget.get_openai_api_key()
                 ai_service = AIServiceFactory.create_ai_service(
                     "openai", api_key=api_key
                 )
-            elif api == "deepseek":
+            elif api == "DeepSeek":
                 api_key = self.api_settings_widget.get_deepseek_api_key()
                 ai_service = AIServiceFactory.create_ai_service(
                     "deepseek", api_key=api_key
+                )
+            elif api == "Ollama Cloud":
+                api_key = self.api_settings_widget.ollama_cloud_key_edit.text().strip()
+                # 检查 API 密钥是否已设置
+                if not api_key:
+                    # 使用 PyQt5 的信号机制在主线程中显示对话框
+                    from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+                    QMetaObject.invokeMethod(
+                        self,
+                        "show_api_key_warning",
+                        Qt.QueuedConnection,
+                        Q_ARG(str, "Ollama Cloud")
+                    )
+                    raise ValueError("Ollama Cloud API 密钥未设置")
+                # 使用 Ollama Cloud 服务 URL
+                base_url = self.api_settings_widget.get_ollama_cloud_base_url()
+                ai_service = AIServiceFactory.create_ai_service(
+                    "ollama_cloud", api_key=api_key, base_url=base_url
                 )
             else:
                 raise ValueError(f"不支持的API类型: {api}")
@@ -518,6 +575,9 @@ class ChatTabWidget(QWidget):
 
         except Exception as e:
             error_msg = f"发送消息失败: {str(e)}"
+            # 替换特定错误信息为更友好的提示
+            if "QMetaObject.invokeMethod() call failed" in error_msg:
+                error_msg = "发送消息失败: Ollama Cloud API 认证失败：无效的 API 密钥"
             # 使用信号安全地更新UI
             self.update_signal.emit("AI", error_msg, model)
         finally:
@@ -866,12 +926,12 @@ class ChatTabWidget(QWidget):
                                         # 进度窗口关闭后，才显示成功对话框
                                         QMessageBox.information(
                                             self,
-                                            "成功",
-                                            f"聊天历史已导出到 {file_path}",
+                                            i18n.translate("success"),
+                                            i18n.translate("pdf_exported", path=file_path),
                                         )
                                     else:
                                         QMessageBox.critical(
-                                            self, "错误", "PDF生成失败"
+                                            self, i18n.translate("error"), i18n.translate("pdf_export_failed")
                                         )
 
                                     # 恢复原始HTML内容
@@ -1011,3 +1071,17 @@ class ChatTabWidget(QWidget):
             self.chat_input_widget.reinit_ui()
         if hasattr(self, "chat_list_widget"):
             self.chat_list_widget.reinit_ui()
+
+    def show_api_key_warning(self, api_name):
+        """
+        显示API密钥未设置的警告对话框
+
+        Args:
+            api_name: API提供商名称
+        """
+        QMessageBox.warning(
+            self,
+            i18n.translate("warning"),
+            f"{api_name} API密钥未设置，请在设置中配置API密钥后重试。",
+            QMessageBox.Ok
+        )

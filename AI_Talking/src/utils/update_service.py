@@ -370,10 +370,11 @@ class UpdateManager(QObject):
         # 在标题栏右侧显示更新通知
         # 这里需要根据主窗口的布局进行调整，可能需要修改主窗口的UI结构
         # 为了简化实现，我们这里直接显示一个消息框
+        from utils.i18n_manager import i18n
         reply = QMessageBox.question(
             self.main_window,
-            "发现新版本",
-            f"发现新版本 {version_info['version']}，是否现在下载？\n\n更新内容：\n{version_info.get('releaseNotes', '无')}",
+            i18n.translate("update_available"),
+            i18n.translate("update_available_message", version=version_info['version'], release_notes=version_info.get('releaseNotes', '无')),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
@@ -395,10 +396,11 @@ class UpdateManager(QObject):
         self.pending_update_path = update_file_path
 
         # 显示提示
+        from utils.i18n_manager import i18n
         QMessageBox.information(
             self.main_window,
-            "更新下载完成",
-            "更新包已下载完成，应用关闭后将自动安装",
+            i18n.translate("update_downloaded"),
+            i18n.translate("update_downloaded_message"),
             QMessageBox.Ok,
         )
 

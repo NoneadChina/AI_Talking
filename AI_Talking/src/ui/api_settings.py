@@ -11,6 +11,7 @@ import os
 from dotenv import load_dotenv
 from utils.logger_config import get_logger
 from utils.i18n_manager import i18n
+from utils.secure_storage import encrypt_data, decrypt_data
 from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtWidgets import (
     QWidget,
@@ -73,6 +74,12 @@ class APISettingsWidget(QWidget):
                     self.language_combo.currentIndexChanged.disconnect(
                         self.on_language_changed
                     )
+                except:
+                    pass
+            # 断开保存按钮的信号连接
+            if hasattr(self, "save_button"):
+                try:
+                    self.save_button.clicked.disconnect(self.save_settings)
                 except:
                     pass
             # 移除所有子控件
@@ -185,7 +192,7 @@ class APISettingsWidget(QWidget):
         self.provider_label = QLabel(i18n.translate("setting_provider"))
         provider_layout.addWidget(self.provider_label, alignment=Qt.AlignVCenter)
         self.translation_provider_combo = QComboBox()
-        self.translation_provider_combo.addItems(["openai", "deepseek", "ollama"])
+        self.translation_provider_combo.addItems(["OpenAI", "DeepSeek", "Ollama"])
         self.translation_provider_combo.setStyleSheet(
             """
             QComboBox {
@@ -339,6 +346,78 @@ class APISettingsWidget(QWidget):
         deepseek_layout.addWidget(self.show_deepseek_key)
         self.deepseek_group.setLayout(deepseek_layout)
         model_settings_layout.addWidget(self.deepseek_group)
+
+        # Ollama Cloud API设置
+        self.ollama_cloud_group = QGroupBox(i18n.translate("setting_ollama_cloud"))
+        self.ollama_cloud_group.setStyleSheet(
+            """
+            QGroupBox {
+                font-weight: bold;
+                font-size: 11pt;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                margin-top: 5px;
+                padding: 10px;
+            }
+        """)
+        ollama_cloud_layout = QVBoxLayout()
+        ollama_cloud_layout.setSpacing(8)
+
+        self.ollama_cloud_key_edit = QLineEdit()
+        self.ollama_cloud_key_edit.setEchoMode(QLineEdit.Password)  # 默认隐藏密钥
+        self.ollama_cloud_key_edit.setPlaceholderText(
+            f"{i18n.translate('setting_enter')}{i18n.translate('setting_ollama_cloud')} API {i18n.translate('setting_key')}"
+        )
+        self.ollama_cloud_key_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                font-size: 10pt;
+            }
+        """)
+
+        # API密钥标签
+        self.ollama_cloud_key_label = QLabel(i18n.translate("setting_ollama_cloud_key"))
+        
+        # 显示密钥复选框
+        self.show_ollama_cloud_key = QCheckBox(i18n.translate("setting_show_key"))
+        self.show_ollama_cloud_key.setStyleSheet("""
+            QCheckBox {
+                font-size: 9pt;
+                margin: 5px 0;
+            }
+        """)
+        self.show_ollama_cloud_key.toggled.connect(
+            lambda checked: self.ollama_cloud_key_edit.setEchoMode(
+                QLineEdit.Normal if checked else QLineEdit.Password
+            )
+        )
+
+        # 基础URL
+        self.ollama_cloud_url_edit = QLineEdit("https://ollama.com")
+        self.ollama_cloud_url_edit.setPlaceholderText(
+            f"{i18n.translate('setting_enter')}{i18n.translate('setting_ollama_cloud')} API {i18n.translate('setting_base_url')}"
+        )
+        self.ollama_cloud_url_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                font-size: 10pt;
+            }
+        """)
+
+        # 基础URL标签
+        self.ollama_cloud_url_label = QLabel(i18n.translate("setting_ollama_cloud_url"))
+
+        ollama_cloud_layout.addWidget(self.ollama_cloud_key_label)
+        ollama_cloud_layout.addWidget(self.ollama_cloud_key_edit)
+        ollama_cloud_layout.addWidget(self.show_ollama_cloud_key)
+        ollama_cloud_layout.addWidget(self.ollama_cloud_url_label)
+        ollama_cloud_layout.addWidget(self.ollama_cloud_url_edit)
+        self.ollama_cloud_group.setLayout(ollama_cloud_layout)
+        model_settings_layout.addWidget(self.ollama_cloud_group)
 
         # Ollama API设置
         self.ollama_group = QGroupBox(i18n.translate("setting_ollama"))
@@ -681,7 +760,8 @@ class APISettingsWidget(QWidget):
             try:
                 # 先保存设置，确保环境变量被更新
                 # 但不弹出消息框，由language_changed信号的处理函数统一处理
-                self.save_settings(show_message=False)
+                # 语言切换时不显示确认对话框
+                self.save_settings(show_message=False, show_confirm=False)
                 # 设置当前语言 - 这会自动发出language_changed信号，触发所有组件的reinit_ui
                 i18n.set_language(lang_code)
                 # 不再需要手动调用reinit_ui，因为language_changed信号会自动触发
@@ -732,6 +812,18 @@ class APISettingsWidget(QWidget):
         if hasattr(self, "deepseek_key_edit"):
             self.deepseek_key_edit.setPlaceholderText(
                 f"{i18n.translate('setting_enter')}{i18n.translate('setting_deepseek')} API {i18n.translate('setting_key')}"
+            )
+
+        # Ollama Cloud API设置组
+        if hasattr(self, "ollama_cloud_group"):
+            self.ollama_cloud_group.setTitle(i18n.translate("setting_ollama_cloud"))
+        if hasattr(self, "ollama_cloud_key_label"):
+            self.ollama_cloud_key_label.setText(i18n.translate("setting_ollama_cloud_key"))
+        if hasattr(self, "show_ollama_cloud_key"):
+            self.show_ollama_cloud_key.setText(i18n.translate("setting_show_key"))
+        if hasattr(self, "ollama_cloud_key_edit"):
+            self.ollama_cloud_key_edit.setPlaceholderText(
+                f"{i18n.translate('setting_enter')}{i18n.translate('setting_ollama_cloud')} API {i18n.translate('setting_key')}"
             )
 
         # Ollama API设置组
@@ -823,9 +915,14 @@ class APISettingsWidget(QWidget):
         2. Ollama URL
         3. 系统提示词
         """
-        # 加载API密钥和URL
-        self.openai_key_edit.setText(os.getenv("OPENAI_API_KEY", ""))
-        self.deepseek_key_edit.setText(os.getenv("DEEPSEEK_API_KEY", ""))
+        # 加载API密钥和URL - 解密密钥
+        from utils.secure_storage import decrypt_data
+        self.openai_key_edit.setText(decrypt_data(os.getenv("OPENAI_API_KEY", "")))
+        self.deepseek_key_edit.setText(decrypt_data(os.getenv("DEEPSEEK_API_KEY", "")))
+        self.ollama_cloud_key_edit.setText(decrypt_data(os.getenv("OLLAMA_CLOUD_API_KEY", "")))
+        self.ollama_cloud_url_edit.setText(
+            os.getenv("OLLAMA_CLOUD_BASE_URL", "https://ollama.com")
+        )
         self.ollama_url_edit.setText(
             os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         )
@@ -921,7 +1018,23 @@ class APISettingsWidget(QWidget):
         """
         return self.deepseek_key_edit.text().strip()
 
-    def save_settings(self, show_message=True):
+    def get_ollama_cloud_api_key(self):
+        """获取当前设置的Ollama Cloud API密钥
+
+        Returns:
+            str: 当前配置的Ollama Cloud API密钥
+        """
+        return self.ollama_cloud_key_edit.text().strip()
+
+    def get_ollama_cloud_base_url(self):
+        """获取当前设置的Ollama Cloud基础URL
+
+        Returns:
+            str: 当前配置的Ollama Cloud API基础URL
+        """
+        return self.ollama_cloud_url_edit.text().strip()
+
+    def save_settings(self, show_message=True, show_confirm=True):
         """
         保存API设置到.env文件。
 
@@ -930,10 +1043,25 @@ class APISettingsWidget(QWidget):
 
         Args:
             show_message: 是否显示保存成功的消息框，默认为True
+            show_confirm: 是否显示确认保存的对话框，默认为True
 
         Returns:
             bool: 设置保存成功返回True，失败返回False
         """
+        # 只在需要时显示二次确认对话框
+        if show_confirm:
+            reply = QMessageBox.question(
+                self,
+                i18n.translate("confirm_save"),
+                i18n.translate("confirm_save_msg"),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+
+            if reply != QMessageBox.Yes:
+                # 用户取消了保存操作
+                return False
+
         try:
             # 确定应用程序的安装目录，与main.py保持一致
             import sys
@@ -971,16 +1099,32 @@ class APISettingsWidget(QWidget):
             # 更新OpenAI API密钥配置 - 始终更新，无论是否为空
             openai_key = self.openai_key_edit.text().strip()
             if openai_key:
-                config["OPENAI_API_KEY"] = openai_key
+                config["OPENAI_API_KEY"] = encrypt_data(openai_key)
             elif "OPENAI_API_KEY" in config:
                 del config["OPENAI_API_KEY"]  # 如果用户删除了密钥，从配置中移除
 
             # 更新DeepSeek API密钥配置 - 始终更新，无论是否为空
             deepseek_key = self.deepseek_key_edit.text().strip()
             if deepseek_key:
-                config["DEEPSEEK_API_KEY"] = deepseek_key
+                config["DEEPSEEK_API_KEY"] = encrypt_data(deepseek_key)
             elif "DEEPSEEK_API_KEY" in config:
                 del config["DEEPSEEK_API_KEY"]  # 如果用户删除了密钥，从配置中移除
+
+            # 更新Ollama Cloud API密钥配置 - 始终更新，无论是否为空
+            ollama_cloud_key = self.ollama_cloud_key_edit.text().strip()
+            ollama_cloud_url = self.ollama_cloud_url_edit.text().strip()
+            if ollama_cloud_key:
+                config["OLLAMA_CLOUD_API_KEY"] = encrypt_data(ollama_cloud_key)
+                if ollama_cloud_url:
+                    # 保存用户设置的Ollama Cloud地址
+                    config["OLLAMA_CLOUD_BASE_URL"] = ollama_cloud_url
+                else:
+                    # 使用默认地址
+                    config["OLLAMA_CLOUD_BASE_URL"] = "https://ollama.com"
+            elif "OLLAMA_CLOUD_API_KEY" in config:
+                del config["OLLAMA_CLOUD_API_KEY"]  # 如果用户删除了密钥，从配置中移除
+                if "OLLAMA_CLOUD_BASE_URL" in config:
+                    del config["OLLAMA_CLOUD_BASE_URL"]
 
             # 更新Ollama API URL配置
             ollama_url = self.ollama_url_edit.text().strip()
@@ -1113,6 +1257,14 @@ class APISettingsWidget(QWidget):
                     # 写入DeepSeek API配置
                     f.write(
                         f"# DeepSeek API配置\nDEEPSEEK_API_KEY={config.get('DEEPSEEK_API_KEY', '')}\n\n"
+                    )
+
+                    # 写入Ollama Cloud API配置
+                    f.write(
+                        f"# Ollama Cloud API配置\nOLLAMA_CLOUD_API_KEY={config.get('OLLAMA_CLOUD_API_KEY', '')}\n"
+                    )
+                    f.write(
+                        f"OLLAMA_CLOUD_BASE_URL={config.get('OLLAMA_CLOUD_BASE_URL', 'https://ollama.com')}\n\n"
                     )
 
                     # 写入Ollama API配置（总是写入，无论是否为默认值）

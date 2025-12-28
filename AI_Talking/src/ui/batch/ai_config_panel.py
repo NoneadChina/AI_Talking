@@ -77,7 +77,7 @@ class AIBatchConfigPanel(QWidget):
             self.ai1_api_label, alignment=Qt.AlignVCenter
         )
         self.batch_ai1_api_combo = create_combo_box(
-            ["ollama", "openai", "deepseek"], "ollama", self.styles["combo_box"]
+            ["Ollama", "OpenAI", "DeepSeek", "Ollama Cloud"], "Ollama", self.styles["combo_box"]
         )
         self.batch_ai1_api_combo.setFixedWidth(180)
         self.batch_ai1_api_combo.currentTextChanged.connect(self.update_ai1_model_list)
@@ -117,7 +117,7 @@ class AIBatchConfigPanel(QWidget):
             self.ai2_api_label, alignment=Qt.AlignVCenter
         )
         self.batch_ai2_api_combo = create_combo_box(
-            ["ollama", "openai", "deepseek"], "ollama", self.styles["combo_box"]
+            ["Ollama", "OpenAI", "DeepSeek", "Ollama Cloud"], "Ollama", self.styles["combo_box"]
         )
         self.batch_ai2_api_combo.setFixedWidth(180)
         self.batch_ai2_api_combo.currentTextChanged.connect(self.update_ai2_model_list)
@@ -157,7 +157,7 @@ class AIBatchConfigPanel(QWidget):
             self.ai3_api_label, alignment=Qt.AlignVCenter
         )
         self.batch_ai3_api_combo = create_combo_box(
-            ["ollama", "openai", "deepseek"], "ollama", self.styles["combo_box"]
+            ["Ollama", "OpenAI", "DeepSeek", "Ollama Cloud"], "Ollama", self.styles["combo_box"]
         )
         self.batch_ai3_api_combo.setFixedWidth(180)
         self.batch_ai3_api_combo.currentTextChanged.connect(self.update_ai3_model_list)
@@ -219,7 +219,7 @@ class AIBatchConfigPanel(QWidget):
         model_combo.clear()
         model_combo.addItem("加载中...")
 
-        if api == "ollama":
+        if api == "Ollama":
             # 异步加载Ollama模型
             base_url = self.api_settings_widget.get_ollama_base_url()
 
@@ -233,19 +233,39 @@ class AIBatchConfigPanel(QWidget):
             model_manager.async_load_ollama_models(
                 base_url, on_models_loaded, on_load_error
             )
+        elif api == "Ollama Cloud":
+            # 异步加载Ollama Cloud模型
+            def on_models_loaded(models):
+                self._on_models_loaded(model_combo, api, models)
+
+            def on_load_error(error):
+                logger.error(f"批量Ollama Cloud模型加载失败: {error}")
+                self._on_models_loaded(model_combo, api, [])
+
+            model_manager.async_load_ollama_cloud_models(
+                on_models_loaded, on_load_error
+            )
         else:
             # 非Ollama API，使用同步加载
             models = []
             try:
-                if api == "openai":
-                    models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
-                elif api == "deepseek":
-                    models = ["deepseek-chat", "deepseek-coder"]
+                from utils.ai_service import AIServiceFactory
+                
+                if api == "OpenAI":
+                    # 使用AIServiceFactory获取OpenAI模型列表
+                    api_key = self.api_settings_widget.get_openai_api_key()
+                    ai_service = AIServiceFactory.create_ai_service("openai", api_key=api_key)
+                    models = ai_service.get_models()
+                elif api == "DeepSeek":
+                    # 使用AIServiceFactory获取DeepSeek模型列表
+                    api_key = self.api_settings_widget.get_deepseek_api_key()
+                    ai_service = AIServiceFactory.create_ai_service("deepseek", api_key=api_key)
+                    models = ai_service.get_models()
             except Exception as e:
                 logger.error(f"获取{api}模型列表失败: {str(e)}")
-                if api == "openai":
+                if api == "OpenAI":
                     models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
-                elif api == "deepseek":
+                elif api == "DeepSeek":
                     models = ["deepseek-chat", "deepseek-coder"]
 
             self._on_models_loaded(model_combo, api, models)
@@ -266,7 +286,7 @@ class AIBatchConfigPanel(QWidget):
         if not models:
             logger.error(f"模型列表为空，API: {api}")
             # 如果API调用失败，使用默认模型列表
-            if api == "ollama":
+            if api == "Ollama":
                 models = [
                     "qwen3:14b",
                     "llama2:7b",
@@ -274,10 +294,12 @@ class AIBatchConfigPanel(QWidget):
                     "gemma:2b",
                     "deepseek-v2:16b",
                 ]
-            elif api == "openai":
+            elif api == "OpenAI":
                 models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
-            elif api == "deepseek":
+            elif api == "DeepSeek":
                 models = ["deepseek-chat", "deepseek-coder"]
+            elif api == "Ollama Cloud":
+                models = ["llama3:70b", "llama3:8b", "gemma:7b", "mistral:7b"]
 
         # 添加模型列表
         if models:

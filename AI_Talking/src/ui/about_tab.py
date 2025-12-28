@@ -89,7 +89,7 @@ class AboutTabWidget(QWidget):
             version_text = f"{i18n.translate('about_version')}{__version__}"
         except Exception as e:
             logger.error(f"获取版本号失败: {str(e)}")
-            version_text = f"{i18n.translate('about_version')}0.3.7"
+            version_text = f"{i18n.translate('about_version')}0.3.10"
         
         self.version_label = QLabel(version_text)
         self.version_label.setStyleSheet("font-size: 16px; color: #666;")
@@ -170,7 +170,7 @@ class AboutTabWidget(QWidget):
         layout.addWidget(self.open_source_label)
 
         # 下载地址
-        self.download_url = "https://gitcode.com/tonyke/AI_Talking/releases/download/v0.3.4/AI_Talking_Setup.exe"
+        self.download_url = "https://gitcode.com/tonyke/AI_Talking/releases/download/v0.3.10/AI_Talking_Setup.exe"
         self.download_label = QLabel()
         self.download_label.setText(
             f"{i18n.translate('download_url')}：<a href='{self.download_url}' style='color: #2196F3; text-decoration: underline;'>{self.download_url}</a>"
@@ -200,7 +200,7 @@ class AboutTabWidget(QWidget):
                 version_text = f"{i18n.translate('about_version')}{__version__}"
             except Exception as e:
                 logger.error(f"获取版本号失败: {str(e)}")
-                version_text = f"{i18n.translate('about_version')}0.3.6"
+                version_text = f"{i18n.translate('about_version')}0.3.10"
             self.version_label.setText(version_text)
 
         # 更新联系方式标题

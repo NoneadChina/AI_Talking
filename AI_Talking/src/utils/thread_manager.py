@@ -5,6 +5,7 @@
 
 import time
 import threading
+import requests
 from .logger_config import get_logger
 from PyQt5.QtCore import QThread, pyqtSignal
 
@@ -12,7 +13,176 @@ from PyQt5.QtCore import QThread, pyqtSignal
 logger = get_logger(__name__)
 
 
-class ChatThread(QThread):
+class BaseAITaskThread(QThread):
+    """
+    AI任务基础线程类，包含通用的线程管理、资源清理和AI服务创建逻辑
+
+    信号:
+        update_signal: 更新历史信号，参数为(发送者, 内容)
+        status_signal: 更新状态信号，参数为状态信息
+        error_signal: 错误信号，参数为错误信息
+        stream_update_signal: 流式更新信号，参数为(发送者, 内容片段, 模型名称)
+        finished_signal: 任务结束信号
+    """
+
+    update_signal = pyqtSignal(str, str)
+    status_signal = pyqtSignal(str)
+    error_signal = pyqtSignal(str)
+    stream_update_signal = pyqtSignal(str, str, str)
+    finished_signal = pyqtSignal()
+
+    def __init__(self, api_settings_widget=None, temperature=0.8):
+        """
+        初始化基础线程
+
+        Args:
+            api_settings_widget: API设置组件
+            temperature: 生成文本的随机性
+        """
+        super().__init__()
+        self.api_settings_widget = api_settings_widget
+        self.temperature = temperature
+        self._stop_event = threading.Event()
+
+    def stop(self):
+        """
+        停止线程
+        """
+        self._stop_event.set()
+
+    def is_stopped(self):
+        """
+        检查线程是否已停止
+
+        Returns:
+            bool: 线程是否已停止
+        """
+        return self._stop_event.is_set()
+
+    def _create_ai_service(self, api_type):
+        """
+        创建AI服务实例
+
+        该方法根据API类型创建对应的AI服务实例，支持多种AI服务提供商
+
+        Args:
+            api_type: API类型，可选值："ollama", "openai", "deepseek", "ollama_cloud"
+
+        Returns:
+            AIServiceInterface: AI服务实例，实现了统一的AI服务接口
+
+        Raises:
+            ValueError: 当提供了不支持的API类型时抛出
+        """
+        from src.utils.ai_service import AIServiceFactory
+
+        # 根据API类型创建对应的AI服务实例
+        if api_type == "ollama" or api_type == "Ollama":
+            return AIServiceFactory.create_ai_service(
+                "ollama", base_url=self.api_settings_widget.get_ollama_base_url()
+            )
+        elif api_type == "openai" or api_type == "OpenAI":
+            return AIServiceFactory.create_ai_service(
+                "openai", api_key=self.api_settings_widget.get_openai_api_key()
+            )
+        elif api_type == "deepseek" or api_type == "DeepSeek":
+            return AIServiceFactory.create_ai_service(
+                "deepseek", api_key=self.api_settings_widget.get_deepseek_api_key()
+            )
+        elif api_type == "ollama_cloud" or api_type == "Ollama Cloud":
+            api_key = self.api_settings_widget.get_ollama_cloud_api_key()
+            if not api_key:
+                raise ValueError("Ollama Cloud API 密钥未设置")
+            return AIServiceFactory.create_ai_service(
+                "ollama_cloud", 
+                api_key=api_key,
+                base_url=self.api_settings_widget.get_ollama_cloud_base_url()
+            )
+        else:
+            raise ValueError(f"不支持的API类型: {api_type}")
+
+    def _cleanup_resources(self):
+        """
+        清理线程资源
+        """
+        logger.info(f"正在清理{self.__class__.__name__}线程资源...")
+
+    def _handle_error(self, error: Exception, error_context: str = ""):
+        """
+        统一处理线程中的错误
+
+        Args:
+            error: 捕获到的异常
+            error_context: 错误上下文信息
+        """
+        error_type = type(error).__name__
+
+        # 构建错误信息
+        if error_context:
+            error_msg = f"{error_context} 错误: {error_type} - {str(error)}"
+        else:
+            error_msg = f"{error_type} - {str(error)}"
+
+        # 根据错误类型提供更友好的提示
+        user_friendly_msg = self._get_user_friendly_error_msg(error, error_context)
+        
+        # 替换特定错误信息为更友好的提示
+        if "QMetaObject.invokeMethod() call failed" in user_friendly_msg:
+            user_friendly_msg = f"{error_context} 错误: Ollama Cloud API 认证失败：无效的 API 密钥"
+
+        # 记录错误日志
+        logger.error(f"[{self.__class__.__name__}] {error_msg}")
+
+        # 发送错误信号
+        self.error_signal.emit(user_friendly_msg)
+
+        # 更新状态
+        self.status_signal.emit(f"{error_context} 失败")
+
+    def _get_user_friendly_error_msg(
+        self, error: Exception, error_context: str = ""
+    ) -> str:
+        """
+        获取用户友好的错误提示信息
+
+        Args:
+            error: 捕获到的异常
+            error_context: 错误上下文信息
+
+        Returns:
+            str: 用户友好的错误提示
+        """
+        error_type = type(error).__name__
+
+        # 根据不同的错误类型提供不同的提示
+        if isinstance(error, ConnectionError):
+            return f"网络连接错误: {str(error)}\n请检查网络连接或服务是否正常运行"
+        elif isinstance(error, TimeoutError):
+            return f"请求超时: {str(error)}\n请检查网络连接或稍后重试"
+        elif isinstance(error, ValueError):
+            return f"参数错误: {str(error)}\n请检查输入参数或配置"
+        elif isinstance(error, RuntimeError):
+            return f"运行时错误: {str(error)}\n请稍后重试或检查服务状态"
+        elif isinstance(error, requests.exceptions.HTTPError):
+            if hasattr(error, "response") and error.response.status_code == 401:
+                return f"认证失败: {str(error)}\n请检查 API 密钥是否正确"
+            elif hasattr(error, "response") and error.response.status_code == 429:
+                return f"请求过于频繁: {str(error)}\n请稍后重试"
+            elif hasattr(error, "response") and error.response.status_code == 503:
+                return f"服务不可用: {str(error)}\n请稍后重试"
+            else:
+                return f"服务请求错误: {str(error)}\n请检查配置或稍后重试"
+        else:
+            return f"未知错误: {str(error)}\n请检查日志获取详细信息"
+
+    def __del__(self):
+        """
+        析构函数，确保资源被正确清理
+        """
+        self._cleanup_resources()
+
+
+class ChatThread(BaseAITaskThread):
     """
     聊天线程类，用于处理聊天消息的发送和接收
 
@@ -21,10 +191,6 @@ class ChatThread(QThread):
         status_signal: 更新状态信号，参数为状态信息
         error_signal: 错误信号，参数为错误信息
     """
-
-    update_signal = pyqtSignal(str, str)
-    status_signal = pyqtSignal(str)
-    error_signal = pyqtSignal(str)
 
     def __init__(
         self,
@@ -48,232 +214,91 @@ class ChatThread(QThread):
             stream: 是否使用流式输出
             temperature: 生成文本的随机性
         """
-        super().__init__()
+        super().__init__(
+            api_settings_widget=api_settings_widget, temperature=temperature
+        )
         self.model_name = model_name
         self.api = api
         self.message = message
         self.messages = messages
-        self.api_settings_widget = api_settings_widget
         self.stream = stream
-        self.temperature = temperature
-        self._stop_event = threading.Event()
-
-    def stop(self):
-        """
-        停止线程
-        """
-        self._stop_event.set()
-
-    def is_stopped(self):
-        """
-        检查线程是否已停止
-
-        Returns:
-            bool: 线程是否已停止
-        """
-        return self._stop_event.is_set()
 
     def _cleanup_resources(self):
         """
         清理线程资源
         """
-        logger.info("正在清理聊天线程资源...")
+        super()._cleanup_resources()
         # 清理消息历史
         self.messages = []
         self.message = ""
 
-    def __del__(self):
-        """
-        析构函数，确保资源被正确清理
-        """
-        self._cleanup_resources()
-
     def run(self):
         """
         线程运行函数，处理聊天消息的发送和接收
+
+        该方法是聊天线程的核心执行逻辑，负责：
+        1. 创建AI服务实例
+        2. 根据配置发送聊天请求（支持流式和非流式响应）
+        3. 处理响应并发送信号更新UI
+        4. 处理可能出现的异常
+
+        信号输出：
+        - update_signal: 用于更新聊天历史，参数为(发送者, 内容)
+        - status_signal: 用于更新状态信息
+        - error_signal: 用于报告错误信息
         """
         try:
-            response = ""
+            full_response = ""  # 存储完整响应
 
-            # 根据API类型选择不同的发送方法
-            if self.api == "ollama":
-                response = self._send_ollama_message(
-                    self.model_name, self.messages, stream=self.stream
+            # 根据API类型创建相应的AI服务实例
+            ai_service = None
+            try:
+                ai_service = self._create_ai_service(self.api)
+            except ValueError as e:
+                # 处理不支持的API类型错误
+                error_msg = f"不支持的API类型: {self.api}"
+                self.update_signal.emit("AI", error_msg)
+                self.status_signal.emit("AI回复完成")
+                return
+
+            # 使用统一接口发送请求，支持流式和非流式响应
+            if self.stream:
+                # 处理流式响应
+                response_generator = ai_service.chat_completion(
+                    self.messages,
+                    self.model_name,
+                    temperature=self.temperature,
+                    stream=True,
                 )
-            elif self.api == "openai":
-                response = self._send_openai_message(
-                    self.model_name, self.messages, stream=self.stream
-                )
-            elif self.api == "deepseek":
-                response = self._send_deepseek_message(
-                    self.model_name, self.messages, stream=self.stream
-                )
+
+                # 逐块处理流式响应
+                for chunk in response_generator:
+                    if self.is_stopped():
+                        break  # 检查线程是否被停止
+                    full_response = chunk  # 更新完整响应
+                    self.update_signal.emit("AI", full_response)  # 发送更新信号
             else:
-                response = f"不支持的API类型: {self.api}"
+                # 处理非流式响应，等待完整响应返回
+                full_response = ai_service.chat_completion(
+                    self.messages,
+                    self.model_name,
+                    temperature=self.temperature,
+                    stream=False,
+                )
 
-            # 发送更新信号
-            self.update_signal.emit("AI", response)
+            # 非流式响应需要单独发送更新信号
+            if not self.stream:
+                self.update_signal.emit("AI", full_response)
+
+            # 发送完成状态信号
             self.status_signal.emit("AI回复完成")
 
         except Exception as e:
-            error_msg = f"聊天失败: {str(e)}"
-            logger.error(error_msg)
-            self.error_signal.emit(error_msg)
-            self.status_signal.emit("聊天失败")
-
-    def _send_ollama_message(self, model_name, messages, stream=False):
-        """
-        发送消息到Ollama API
-
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-
-        Returns:
-            str: AI回复内容
-        """
-        import requests
-        import json
-
-        base_url = self.api_settings_widget.get_ollama_base_url()
-        full_response = ""
-
-        response = requests.post(
-            f"{base_url}/api/chat",
-            json={
-                "model": model_name,
-                "messages": messages,
-                "stream": stream,
-                "options": {"temperature": self.temperature},
-            },
-        )
-        response.raise_for_status()
-
-        if stream:
-            for line in response.iter_lines(decode_unicode=True):
-                if line and not self.is_stopped():
-                    data = json.loads(line)
-                    if "message" in data and "content" in data["message"]:
-                        content = data["message"]["content"]
-                        full_response += content
-                        self.update_signal.emit("AI", full_response)
-        else:
-            data = response.json()
-            full_response = data.get("message", {}).get("content", "")
-
-        return full_response
-
-    def _send_openai_message(self, model_name, messages, stream=False):
-        """
-        发送消息到OpenAI API
-
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-
-        Returns:
-            str: AI回复内容
-        """
-        import requests
-        import json
-
-        api_key = self.api_settings_widget.get_openai_api_key()
-        full_response = ""
-
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model_name,
-                "messages": messages,
-                "stream": stream,
-                "temperature": self.temperature,
-            },
-        )
-        response.raise_for_status()
-
-        if stream:
-            for line in response.iter_lines(decode_unicode=True):
-                if line and line.startswith("data: ") and not self.is_stopped():
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    data = json.loads(data_str)
-                    if "choices" in data and len(data["choices"]) > 0:
-                        delta = data["choices"][0].get("delta", {})
-                        if "content" in delta:
-                            content = delta["content"]
-                            full_response += content
-                            self.update_signal.emit("AI", full_response)
-        else:
-            data = response.json()
-            full_response = (
-                data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
-
-        return full_response
-
-    def _send_deepseek_message(self, model_name, messages, stream=False):
-        """
-        发送消息到DeepSeek API
-
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-
-        Returns:
-            str: AI回复内容
-        """
-        import requests
-        import json
-
-        api_key = self.api_settings_widget.get_deepseek_api_key()
-        full_response = ""
-
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model_name,
-                "messages": messages,
-                "stream": stream,
-                "temperature": self.temperature,
-            },
-        )
-        response.raise_for_status()
-
-        if stream:
-            for line in response.iter_lines(decode_unicode=True):
-                if line and line.startswith("data: ") and not self.is_stopped():
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    data = json.loads(data_str)
-                    if "choices" in data and len(data["choices"]) > 0:
-                        delta = data["choices"][0].get("delta", {})
-                        if "content" in delta:
-                            content = delta["content"]
-                            full_response += content
-                            self.update_signal.emit("AI", full_response)
-        else:
-            data = response.json()
-            full_response = (
-                data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
-
-        return full_response
+            # 统一处理所有异常
+            self._handle_error(e, "聊天")
 
 
-class SummaryThread(QThread):
+class SummaryThread(BaseAITaskThread):
     """
     总结线程类，用于处理讨论总结
 
@@ -284,12 +309,6 @@ class SummaryThread(QThread):
         stream_update_signal: 流式更新信号，参数为(发送者, 内容片段, 模型名称)
         finished_signal: 总结结束信号
     """
-
-    update_signal = pyqtSignal(str, str)
-    status_signal = pyqtSignal(str)
-    error_signal = pyqtSignal(str)
-    stream_update_signal = pyqtSignal(str, str, str)
-    finished_signal = pyqtSignal()
 
     def __init__(
         self,
@@ -311,53 +330,43 @@ class SummaryThread(QThread):
             temperature: 生成文本的随机性
             config_panel: 配置面板，用于实时获取温度值
         """
-        super().__init__()
+        super().__init__(
+            api_settings_widget=api_settings_widget, temperature=temperature
+        )
         self.model_name = model_name
         self.model_api = model_api
         self.messages = messages
-        self.api_settings_widget = api_settings_widget
-        self.temperature = temperature
         self.config_panel = config_panel
-        self._stop_event = threading.Event()
-
-    def stop(self):
-        """
-        停止线程
-        """
-        self._stop_event.set()
-
-    def is_stopped(self):
-        """
-        检查线程是否已停止
-
-        Returns:
-            bool: 线程是否已停止
-        """
-        return self._stop_event.is_set()
 
     def _cleanup_resources(self):
         """
         清理线程资源
         """
-        logger.info("正在清理总结线程资源...")
+        super()._cleanup_resources()
         # 清理消息列表
         self.messages = []
-
-    def __del__(self):
-        """
-        析构函数，确保资源被正确清理
-        """
-        self._cleanup_resources()
 
     def run(self):
         """
         线程运行函数，处理总结
+
+        该方法是总结线程的核心执行逻辑，负责：
+        1. 确定总结者类型（专家AI3或裁判AI3）
+        2. 发送总结请求
+        3. 处理流式响应并更新UI
+        4. 处理可能出现的异常
+
+        信号输出：
+        - status_signal: 用于更新状态信息
+        - stream_update_signal: 用于流式更新总结内容
+        - finished_signal: 用于通知总结完成
+        - error_signal: 用于报告错误信息
         """
         try:
-            # 确定发送者名称
+            # 确定发送者名称（专家AI3或裁判AI3）
             sender_name = "专家AI3"  # 默认使用专家AI3
 
-            # 1. 首先检查系统提示词内容，确定是专家AI3还是裁判AI3
+            # 1. 检查系统提示词内容，确定总结者类型
             for msg in self.messages:
                 if msg["role"] == "system":
                     content = msg["content"]
@@ -368,7 +377,7 @@ class SummaryThread(QThread):
                         sender_name = "专家AI3"
                         break
 
-            # 2. 检查系统提示词的来源环境变量，进一步确认
+            # 2. 进一步检查系统提示词内容，确认总结者类型
             for msg in self.messages:
                 if msg["role"] == "system":
                     content = msg["content"]
@@ -389,18 +398,7 @@ class SummaryThread(QThread):
                         sender_name = "专家AI3"
                         break
 
-            # 3. 检查用户消息内容，确认功能类型
-            for msg in self.messages:
-                if msg["role"] == "user":
-                    content = msg["content"]
-                    if "正方" in content and "反方" in content:
-                        # 辩论功能，使用裁判AI3
-                        sender_name = "裁判AI3"
-                        break
-                    elif "学者AI1" in content and "学者AI2" in content:
-                        # 讨论功能，使用专家AI3
-                        sender_name = "专家AI3"
-                        break
+            # 发送开始总结的状态信号
             self.status_signal.emit(
                 f"{sender_name}开始总结，模型: {self.model_name} (API: {self.model_api})"
             )
@@ -408,197 +406,41 @@ class SummaryThread(QThread):
             # 发送总结响应
             full_response = ""
 
-            # 实时获取最新温度值
+            # 实时获取最新温度值（支持动态调整）
             temperature = self.temperature
             if self.config_panel:
                 temperature = self.config_panel.get_temperature()
 
-            # 根据API类型选择不同的发送方法
-            if self.model_api == "ollama":
-                import requests
-                import json
+            # 使用统一的AI服务接口发送请求
+            ai_service = self._create_ai_service(self.model_api)
+            response_generator = ai_service.chat_completion(
+                self.messages,
+                self.model_name,
+                temperature=temperature,
+                stream=True,  # 总结始终使用流式响应
+            )
 
-                base_url = self.api_settings_widget.get_ollama_base_url()
+            # 处理流式响应，逐块更新总结内容
+            for chunk in response_generator:
+                if self.is_stopped():
+                    break  # 检查线程是否被停止
+                full_response = chunk  # 更新完整响应
+                # 发送流式更新信号
+                self.stream_update_signal.emit(
+                    sender_name, full_response, self.model_name
+                )
 
-                if True:  # stream=True
-                    # 使用流式响应
-                    response = requests.post(
-                        f"{base_url}/api/chat",
-                        json={
-                            "model": self.model_name,
-                            "messages": self.messages,
-                            "stream": True,
-                            "options": {"temperature": temperature},
-                        },
-                        stream=True,
-                    )
-                    response.raise_for_status()
-
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line and not self.is_stopped():
-                            data = json.loads(line)
-                            if "message" in data and "content" in data["message"]:
-                                content = data["message"]["content"]
-                                full_response += content
-                                # 发送流式更新信号
-                                self.stream_update_signal.emit(
-                                    sender_name, full_response, self.model_name
-                                )
-                else:
-                    # 使用非流式响应
-                    response_data = requests.post(
-                        f"{base_url}/api/chat",
-                        json={
-                            "model": self.model_name,
-                            "messages": self.messages,
-                            "options": {"temperature": temperature},
-                            "stream": False,
-                        },
-                    )
-                    response_data.raise_for_status()
-                    data = response_data.json()
-                    full_response = data.get("message", {}).get("content", "")
-                    # 发送更新信号
-                    self.update_signal.emit(sender_name, full_response)
-            elif self.model_api == "openai":
-                import requests
-                import json
-
-                api_key = self.api_settings_widget.get_openai_api_key()
-
-                if True:  # stream=True
-                    # 使用流式响应
-                    response = requests.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": self.model_name,
-                            "messages": self.messages,
-                            "temperature": self.temperature,
-                            "stream": True,
-                        },
-                        stream=True,
-                    )
-                    response.raise_for_status()
-
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line and line.startswith("data: ") and not self.is_stopped():
-                            data_str = line[6:]
-                            if data_str == "[DONE]":
-                                break
-                            data = json.loads(data_str)
-                            if "choices" in data and len(data["choices"]) > 0:
-                                delta = data["choices"][0].get("delta", {})
-                                if "content" in delta:
-                                    content = delta["content"]
-                                    full_response += content
-                                    # 发送流式更新信号
-                                    self.stream_update_signal.emit(
-                                        sender_name, full_response, self.model_name
-                                    )
-                else:
-                    # 使用非流式响应
-                    response_data = requests.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": self.model_name,
-                            "messages": self.messages,
-                            "temperature": self.temperature,
-                            "stream": False,
-                        },
-                    )
-                    response_data.raise_for_status()
-                    data = response_data.json()
-                    full_response = (
-                        data.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
-                    )
-                    # 发送更新信号
-                    self.update_signal.emit(sender_name, full_response)
-            elif self.model_api == "deepseek":
-                import requests
-                import json
-
-                api_key = self.api_settings_widget.get_deepseek_api_key()
-
-                if True:  # stream=True
-                    # 使用流式响应
-                    response = requests.post(
-                        "https://api.deepseek.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": self.model_name,
-                            "messages": self.messages,
-                            "temperature": temperature,
-                            "stream": True,
-                        },
-                        stream=True,
-                    )
-                    response.raise_for_status()
-
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line and line.startswith("data: ") and not self.is_stopped():
-                            data_str = line[6:]
-                            if data_str == "[DONE]":
-                                break
-                            data = json.loads(data_str)
-                            if "choices" in data and len(data["choices"]) > 0:
-                                delta = data["choices"][0].get("delta", {})
-                                if "content" in delta:
-                                    content = delta["content"]
-                                    full_response += content
-                                    # 发送流式更新信号
-                                    self.stream_update_signal.emit(
-                                        sender_name, full_response, self.model_name
-                                    )
-                else:
-                    # 使用非流式响应
-                    response_data = requests.post(
-                        "https://api.deepseek.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": self.model_name,
-                            "messages": self.messages,
-                            "temperature": self.temperature,
-                            "stream": False,
-                        },
-                    )
-                    response_data.raise_for_status()
-                    data = response_data.json()
-                    full_response = (
-                        data.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
-                    )
-                    # 发送更新信号
-                    self.update_signal.emit(sender_name, full_response)
-
-            # 添加总结完成消息到讨论历史
+            # 发送总结完成的状态信号和结束信号
             self.status_signal.emit("总结完成")
             self.finished_signal.emit()
 
         except Exception as e:
-            error_msg = f"总结失败: {str(e)}"
-            logger.error(error_msg)
-            self.error_signal.emit(error_msg)
+            # 统一处理所有异常
+            self._handle_error(e, "总结")
             self.finished_signal.emit()
 
 
-class DebateThread(QThread):
+class DebateThread(BaseAITaskThread):
     """
     辩论线程类，用于处理双AI辩论
 
@@ -609,12 +451,6 @@ class DebateThread(QThread):
         stream_update_signal: 流式更新信号，参数为(发送者, 内容片段, 模型名称)
         finished_signal: 辩论结束信号
     """
-
-    update_signal = pyqtSignal(str, str)
-    status_signal = pyqtSignal(str)
-    error_signal = pyqtSignal(str)
-    stream_update_signal = pyqtSignal(str, str, str)
-    finished_signal = pyqtSignal()
 
     def __init__(
         self,
@@ -646,7 +482,9 @@ class DebateThread(QThread):
             api_settings_widget: API设置组件，用于获取API配置
             temperature: 生成文本的随机性，默认为0.8
         """
-        super().__init__()
+        super().__init__(
+            api_settings_widget=api_settings_widget, temperature=temperature
+        )
         self.topics = topics
         self.model1_name = model1_name
         self.model2_name = model2_name
@@ -656,26 +494,8 @@ class DebateThread(QThread):
         self.model3_api = model3_api
         self.rounds = rounds
         self.time_limit = time_limit
-        self.api_settings_widget = api_settings_widget
-        self.temperature = temperature
-        self._stop_event = threading.Event()
         self.debate_history_messages = []
         self.start_time = None
-
-    def stop(self):
-        """
-        停止线程
-        """
-        self._stop_event.set()
-
-    def is_stopped(self):
-        """
-        检查线程是否已停止
-
-        Returns:
-            bool: 线程是否已停止
-        """
-        return self._stop_event.is_set()
 
     def get_debate_history(self):
         """
@@ -690,126 +510,9 @@ class DebateThread(QThread):
         """
         清理线程资源
         """
-        logger.info("正在清理辩论线程资源...")
+        super()._cleanup_resources()
         # 清理辩论历史消息
         self.debate_history_messages = []
-
-    def __del__(self):
-        """
-        析构函数，确保资源被正确清理
-        """
-        self._cleanup_resources()
-
-    def run(self):
-        """
-        线程运行函数，处理双AI辩论
-        """
-        self.start_time = time.time()
-
-        try:
-            # 获取辩论系统提示词（从环境变量读取，确保使用最新的设置）
-            import os
-
-            debate_common_prompt = os.getenv("DEBATE_SYSTEM_PROMPT", "").strip()
-            debate_ai1_prompt = os.getenv("DEBATE_AI1_SYSTEM_PROMPT", "").strip()
-            debate_ai2_prompt = os.getenv("DEBATE_AI2_SYSTEM_PROMPT", "").strip()
-
-            # 初始化辩论历史
-            self.debate_history_messages = []
-
-            # 开始辩论
-            for i, topic in enumerate(self.topics):
-                if self.is_stopped():
-                    break
-
-                # 检查时间限制
-                if (
-                    self.time_limit > 0
-                    and (time.time() - self.start_time) > self.time_limit
-                ):
-                    self.status_signal.emit("辩论已超时")
-                    break
-
-                # 发送主题
-                # self.update_signal.emit("系统", f"=== 辩论主题: {topic} ===")
-                # 将主题添加到辩论历史
-                self.debate_history_messages.append(
-                    {"role": "system", "content": f"辩论主题: {topic}"}
-                )
-
-                # 进行辩论轮次
-                for round_num in range(1, self.rounds + 1):
-                    if self.is_stopped():
-                        break
-
-                    self.update_signal.emit("系统", f"=== 第 {round_num} 轮辩论 ===")
-                    # 将轮次信息添加到辩论历史
-                    self.debate_history_messages.append(
-                        {"role": "system", "content": f"第 {round_num} 轮辩论"}
-                    )
-
-                    # 正方发言
-                    self.status_signal.emit(f"正方{self.model1_name}正在发言...")
-                    model1_response = self._send_debate_message(
-                        self.model1_name,
-                        self.model1_api,
-                        debate_common_prompt,
-                        debate_ai1_prompt,
-                        topic,
-                        self.temperature,
-                        previous_response="",
-                        stream=True,
-                        sender_prefix="正方",
-                    )
-                    if self.is_stopped():
-                        break
-
-                    # 将正方发言添加到辩论历史
-                    self.debate_history_messages.append(
-                        {"role": f"正方{self.model1_name}", "content": model1_response}
-                    )
-
-                    if self.is_stopped():
-                        break
-
-                    # 反方发言
-                    self.status_signal.emit(f"反方{self.model2_name}正在发言...")
-                    model2_response = self._send_debate_message(
-                        self.model2_name,
-                        self.model2_api,
-                        debate_common_prompt,
-                        debate_ai2_prompt,
-                        topic,
-                        self.temperature,
-                        previous_response=model1_response,
-                        stream=True,
-                        sender_prefix="反方",
-                    )
-                    if self.is_stopped():
-                        break
-
-                    # 将反方发言添加到辩论历史
-                    self.debate_history_messages.append(
-                        {"role": f"反方{self.model2_name}", "content": model2_response}
-                    )
-
-                    if self.is_stopped():
-                        break
-
-            total_time = time.time() - self.start_time
-            self.status_signal.emit(f"辩论结束，总耗时: {total_time:.2f} 秒")
-            # 添加辩论结束消息到辩论历史
-            self.update_signal.emit("系统", "辩论结束")
-            self.debate_history_messages.append(
-                {"role": "system", "content": "辩论结束"}
-            )
-            self.finished_signal.emit()
-
-        except Exception as e:
-            error_msg = f"辩论失败: {str(e)}"
-            logger.error(error_msg)
-            self.error_signal.emit(error_msg)
-            self.finished_signal.emit()
 
     def _send_debate_message(
         self,
@@ -857,272 +560,169 @@ class DebateThread(QThread):
             {"role": "user", "content": message},
         ]
 
-        # 根据API类型选择不同的发送方法
-        response = ""
+        # 使用统一的AI服务接口发送请求
         try:
-            if api == "ollama":
-                response = self._send_ollama_message(
-                    model_name, messages, stream=stream, sender_prefix=sender_prefix
+            ai_service = self._create_ai_service(api)
+            full_response = ""
+
+            if stream:
+                # 处理流式响应
+                response_generator = ai_service.chat_completion(
+                    messages, model_name, temperature=temperature, stream=True
                 )
-            elif api == "openai":
-                response = self._send_openai_message(
-                    model_name, messages, stream=stream, sender_prefix=sender_prefix
-                )
-            elif api == "deepseek":
-                response = self._send_deepseek_message(
-                    model_name, messages, stream=stream, sender_prefix=sender_prefix
-                )
+
+                for chunk in response_generator:
+                    if self.is_stopped():
+                        break
+                    full_response = chunk
+                    # 发送流式更新信号
+                    self.stream_update_signal.emit(
+                        f"{sender_prefix}{model_name}",
+                        full_response,
+                        model_name,
+                    )
             else:
-                response = f"不支持的API类型: {api}"
+                # 处理非流式响应
+                full_response = ai_service.chat_completion(
+                    messages, model_name, temperature=temperature, stream=False
+                )
+
+            return full_response
         except Exception as e:
-            logger.error(f"发送辩论消息失败: {str(e)}")
-            response = f"抱歉，我暂时无法提供观点。错误: {str(e)}"
+            self._handle_error(e, "发送辩论消息")
+            return ""
 
-        return response
-
-    def _send_ollama_message(
-        self, model_name, messages, stream=False, sender_prefix="正方"
-    ):
+    def run(self):
         """
-        发送消息到Ollama API，支持流式输出
+        线程运行函数，处理双AI辩论
 
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-            sender_prefix: 发送者前缀，用于区分正方和反方
+        该方法是辩论线程的核心执行逻辑，负责：
+        1. 初始化辩论环境和历史
+        2. 遍历辩论主题
+        3. 执行多轮辩论
+        4. 处理正方和反方的发言
+        5. 更新辩论历史和UI
+        6. 处理时间限制和线程停止
+        7. 处理可能出现的异常
 
-        Returns:
-            str: AI回复内容
+        信号输出：
+        - update_signal: 用于更新辩论历史
+        - status_signal: 用于更新辩论状态
+        - stream_update_signal: 用于流式更新发言内容
+        - finished_signal: 用于通知辩论结束
+        - error_signal: 用于报告错误信息
         """
-        base_url = self.api_settings_widget.get_ollama_base_url()
-        import requests
-        import json
+        self.start_time = time.time()  # 记录辩论开始时间
 
-        full_response = ""
+        try:
+            # 获取辩论系统提示词（从环境变量读取，确保使用最新的设置）
+            import os
 
-        if stream:
-            # 使用流式响应
-            response = requests.post(
-                f"{base_url}/api/chat",
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "stream": True,
-                },
-                stream=True,
-            )
-            response.raise_for_status()
+            debate_common_prompt = os.getenv("DEBATE_SYSTEM_PROMPT", "").strip()
+            debate_ai1_prompt = os.getenv("DEBATE_AI1_SYSTEM_PROMPT", "").strip()
+            debate_ai2_prompt = os.getenv("DEBATE_AI2_SYSTEM_PROMPT", "").strip()
 
-            # 处理流式响应
-            for chunk in response.iter_lines(decode_unicode=True):
+            # 初始化辩论历史
+            self.debate_history_messages = []
+
+            # 开始辩论，遍历所有辩论主题
+            for i, topic in enumerate(self.topics):
                 if self.is_stopped():
+                    break  # 检查线程是否被停止
+
+                # 检查时间限制
+                if (
+                    self.time_limit > 0
+                    and (time.time() - self.start_time) > self.time_limit
+                ):
+                    self.status_signal.emit("辩论已超时")
                     break
 
-                if chunk:
-                    try:
-                        chunk_data = json.loads(chunk)
-                        if (
-                            "message" in chunk_data
-                            and "content" in chunk_data["message"]
-                        ):
-                            content = chunk_data["message"]["content"]
-                            if content:
-                                full_response += content
-                                # 发送流式更新信号
-                                self.stream_update_signal.emit(
-                                    f"{sender_prefix}{model_name}",
-                                    full_response,
-                                    model_name,
-                                )
-                    except json.JSONDecodeError as e:
-                        logger.error(f"解析Ollama流式响应失败: {str(e)}")
-        else:
-            # 使用非流式响应
-            response_data = requests.post(
-                f"{base_url}/api/chat",
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "stream": False,
-                },
-            )
-            response_data.raise_for_status()
-            data = response_data.json()
-            full_response = data.get("message", {}).get("content", "")
+                # 将主题添加到辩论历史
+                self.debate_history_messages.append(
+                    {"role": "system", "content": f"辩论主题: {topic}"}
+                )
 
-        return full_response
+                # 进行辩论轮次
+                for round_num in range(1, self.rounds + 1):
+                    if self.is_stopped():
+                        break  # 检查线程是否被停止
 
-    def _send_openai_message(
-        self, model_name, messages, stream=False, sender_prefix="正方"
-    ):
-        """
-        发送消息到OpenAI API，支持流式输出
+                    # 发送轮次信息
+                    self.update_signal.emit("系统", f"=== 第 {round_num} 轮辩论 ===")
+                    # 将轮次信息添加到辩论历史
+                    self.debate_history_messages.append(
+                        {"role": "system", "content": f"第 {round_num} 轮辩论"}
+                    )
 
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-            sender_prefix: 发送者前缀，用于区分正方和反方
+                    # 正方发言阶段
+                    self.status_signal.emit(f"正方{self.model1_name}正在发言...")
+                    model1_response = self._send_debate_message(
+                        self.model1_name,
+                        self.model1_api,
+                        debate_common_prompt,
+                        debate_ai1_prompt,
+                        topic,
+                        self.temperature,
+                        previous_response="",
+                        stream=True,
+                        sender_prefix="正方",
+                    )
+                    if self.is_stopped():
+                        break  # 检查线程是否被停止
 
-        Returns:
-            str: AI回复内容
-        """
-        api_key = self.api_settings_widget.get_openai_api_key()
-        import requests
-        import json
+                    # 将正方发言添加到辩论历史
+                    self.debate_history_messages.append(
+                        {"role": f"正方{self.model1_name}", "content": model1_response}
+                    )
 
-        full_response = ""
+                    if self.is_stopped():
+                        break  # 检查线程是否被停止
 
-        if stream:
-            # 使用流式响应
-            response = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "stream": True,
-                },
-                stream=True,
-            )
-            response.raise_for_status()
+                    # 反方发言阶段
+                    self.status_signal.emit(f"反方{self.model2_name}正在发言...")
+                    model2_response = self._send_debate_message(
+                        self.model2_name,
+                        self.model2_api,
+                        debate_common_prompt,
+                        debate_ai2_prompt,
+                        topic,
+                        self.temperature,
+                        previous_response=model1_response,
+                        stream=True,
+                        sender_prefix="反方",
+                    )
+                    if self.is_stopped():
+                        break  # 检查线程是否被停止
 
-            # 处理流式响应
-            for chunk in response.iter_lines(decode_unicode=True):
-                if self.is_stopped():
-                    break
+                    # 将反方发言添加到辩论历史
+                    self.debate_history_messages.append(
+                        {"role": f"反方{self.model2_name}", "content": model2_response}
+                    )
 
-                if chunk and chunk.startswith("data: "):
-                    try:
-                        chunk_data = json.loads(chunk[6:])
-                        if "choices" in chunk_data and len(chunk_data["choices"]) > 0:
-                            delta = chunk_data["choices"][0].get("delta", {})
-                            if "content" in delta:
-                                content = delta["content"]
-                                full_response += content
-                                # 发送流式更新信号
-                                self.stream_update_signal.emit(
-                                    f"{sender_prefix}{model_name}",
-                                    full_response,
-                                    model_name,
-                                )
-                    except json.JSONDecodeError as e:
-                        logger.error(f"解析OpenAI流式响应失败: {str(e)}")
-        else:
-            # 使用非流式响应
-            response_data = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "stream": False,
-                },
-            )
-            response_data.raise_for_status()
-            data = response_data.json()
-            full_response = (
-                data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if self.is_stopped():
+                        break  # 检查线程是否被停止
+
+            # 计算辩论总耗时
+            total_time = time.time() - self.start_time
+            self.status_signal.emit(f"辩论结束，总耗时: {total_time:.2f} 秒")
+
+            # 发送辩论结束消息
+            self.update_signal.emit("系统", "=== 辩论结束 ===")
+            self.debate_history_messages.append(
+                {"role": "system", "content": "辩论结束"}
             )
 
-        return full_response
+            # 发送辩论结束信号
+            self.finished_signal.emit()
 
-    def _send_deepseek_message(
-        self, model_name, messages, stream=False, sender_prefix="正方"
-    ):
-        """
-        发送消息到DeepSeek API，支持流式输出
-
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-            sender_prefix: 发送者前缀，用于区分正方和反方
-
-        Returns:
-            str: AI回复内容
-        """
-        api_key = self.api_settings_widget.get_deepseek_api_key()
-        import requests
-        import json
-
-        full_response = ""
-
-        if stream:
-            # 使用流式响应
-            response = requests.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "stream": True,
-                },
-                stream=True,
-            )
-            response.raise_for_status()
-
-            # 处理流式响应
-            for chunk in response.iter_lines(decode_unicode=True):
-                if self.is_stopped():
-                    break
-
-                if chunk and chunk.startswith("data: "):
-                    try:
-                        chunk_data = json.loads(chunk[6:])
-                        if "choices" in chunk_data and len(chunk_data["choices"]) > 0:
-                            delta = chunk_data["choices"][0].get("delta", {})
-                            if "content" in delta:
-                                content = delta["content"]
-                                full_response += content
-                                # 发送流式更新信号
-                                self.stream_update_signal.emit(
-                                    f"{sender_prefix}{model_name}",
-                                    full_response,
-                                    model_name,
-                                )
-                    except json.JSONDecodeError as e:
-                        logger.error(f"解析DeepSeek流式响应失败: {str(e)}")
-        else:
-            # 使用非流式响应
-            response_data = requests.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "stream": False,
-                },
-            )
-            response_data.raise_for_status()
-            data = response_data.json()
-            full_response = (
-                data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
-
-        return full_response
+        except Exception as e:
+            # 统一处理所有异常
+            self._handle_error(e, "辩论")
+            self.finished_signal.emit()
 
 
-class DiscussionThread(QThread):
+class DiscussionThread(BaseAITaskThread):
     """
     讨论线程类，用于处理双AI讨论
 
@@ -1133,12 +733,6 @@ class DiscussionThread(QThread):
         stream_update_signal: 流式更新信号，参数为(发送者, 内容片段, 模型名称)
         finished_signal: 讨论结束信号
     """
-
-    update_signal = pyqtSignal(str, str)
-    status_signal = pyqtSignal(str)
-    error_signal = pyqtSignal(str)
-    stream_update_signal = pyqtSignal(str, str, str)
-    finished_signal = pyqtSignal()
 
     def __init__(
         self,
@@ -1172,7 +766,9 @@ class DiscussionThread(QThread):
             temperature: 生成文本的随机性
             config_panel: 配置面板，用于实时获取温度值
         """
-        super().__init__()
+        super().__init__(
+            api_settings_widget=api_settings_widget, temperature=temperature
+        )
         self.topic = topic
         self.model1_name = model1_name
         self.model2_name = model2_name
@@ -1182,31 +778,15 @@ class DiscussionThread(QThread):
         self.model3_api = model3_api
         self.rounds = rounds
         self.time_limit = time_limit
-        self.api_settings_widget = api_settings_widget
-        self.temperature = temperature
         self.config_panel = config_panel
-        self._stop_event = threading.Event()
 
         # 讨论历史存储
         self.discussion_history = []
+        # 讨论历史最大长度，超过后将清理旧消息
+        self.max_discussion_history = 50
 
         # 时间管理
         self.start_time = None
-
-    def stop(self):
-        """
-        停止线程
-        """
-        self._stop_event.set()
-
-    def is_stopped(self):
-        """
-        检查线程是否已停止
-
-        Returns:
-            bool: 线程是否已停止
-        """
-        return self._stop_event.is_set()
 
     def get_discussion_history(self):
         """
@@ -1217,25 +797,102 @@ class DiscussionThread(QThread):
         """
         return self.discussion_history
 
+    def _cleanup_discussion_history(self):
+        """
+        清理讨论历史，只保留最新的消息
+        
+        保留系统提示词和最新的消息，删除中间的旧消息
+        """
+        if len(self.discussion_history) > self.max_discussion_history:
+            # 保留系统提示词
+            system_prompts = [msg for msg in self.discussion_history if msg['role'] == 'system']
+            # 保留最新的消息
+            latest_messages = self.discussion_history[-self.max_discussion_history+len(system_prompts):]
+            # 合并系统提示词和最新消息
+            self.discussion_history = system_prompts + latest_messages
+            logger.info(f"讨论历史已清理，当前长度: {len(self.discussion_history)}")
+    
     def _cleanup_resources(self):
         """
         清理线程资源
         """
-        logger.info("正在清理讨论线程资源...")
+        super()._cleanup_resources()
         # 清理讨论历史消息
         self.discussion_history = []
 
-    def __del__(self):
+    def _get_ai_response(
+        self, model_name, api, messages, stream=False, sender_prefix="学者AI1"
+    ):
         """
-        析构函数，确保资源被正确清理
+        获取AI模型的响应，支持流式输出
+
+        Args:
+            model_name: 模型名称
+            api: API类型
+            messages: 消息历史
+            stream: 是否使用流式输出
+            sender_prefix: 发送者前缀，用于区分AI1和AI2
+
+        Returns:
+            str: AI回复内容
         """
-        self._cleanup_resources()
+        try:
+            # 实时获取最新温度值
+            current_temperature = self.temperature
+            if self.config_panel:
+                current_temperature = self.config_panel.get_temperature()
+
+            # 使用统一的AI服务接口发送请求
+            ai_service = self._create_ai_service(api)
+            full_response = ""
+
+            if stream:
+                # 处理流式响应
+                response_generator = ai_service.chat_completion(
+                    messages, model_name, temperature=current_temperature, stream=True
+                )
+
+                for chunk in response_generator:
+                    if self.is_stopped():
+                        break
+                    full_response = chunk
+                    # 发送流式更新信号
+                    self.stream_update_signal.emit(
+                        f"{sender_prefix} {model_name}", full_response, model_name
+                    )
+            else:
+                # 处理非流式响应
+                full_response = ai_service.chat_completion(
+                    messages, model_name, temperature=current_temperature, stream=False
+                )
+
+            return full_response
+        except Exception as e:
+            self._handle_error(e, "获取AI响应")
+            return ""
 
     def run(self):
         """
         线程运行函数，处理双AI讨论
+
+        该方法是讨论线程的核心执行逻辑，负责：
+        1. 初始化讨论环境和历史
+        2. 设置讨论主题和参数
+        3. 执行多轮讨论
+        4. 处理AI1和AI2的交替发言
+        5. 构建发言上下文和系统提示词
+        6. 更新讨论历史和UI
+        7. 处理时间限制和线程停止
+        8. 处理可能出现的异常
+
+        信号输出：
+        - update_signal: 用于更新讨论历史
+        - status_signal: 用于更新讨论状态
+        - stream_update_signal: 用于流式更新发言内容
+        - finished_signal: 用于通知讨论结束
+        - error_signal: 用于报告错误信息
         """
-        self.start_time = time.time()
+        self.start_time = time.time()  # 记录讨论开始时间
 
         try:
             # 获取讨论系统提示词（从环境变量读取，确保使用最新的设置）
@@ -1256,7 +913,7 @@ class DiscussionThread(QThread):
                 {"role": "system", "content": discussion_common_prompt}
             )
 
-            # 开始讨论
+            # 发送讨论开始的状态信息
             self.status_signal.emit(f"两个AI开始围绕主题 '{self.topic}' 进行讨论")
             self.status_signal.emit(
                 f"学者AI1: {self.model1_name} (API: {self.model1_api})"
@@ -1268,9 +925,6 @@ class DiscussionThread(QThread):
 
             if self.time_limit > 0:
                 self.status_signal.emit(f"时间限制: {self.time_limit} 秒")
-
-            # AI1的初始消息
-            ai1_initial_message = f"主题：{self.topic}。请提供你的见解和观点。"
 
             # 讨论轮次循环，执行指定轮数的讨论
             for round_num in range(1, self.rounds + 1):
@@ -1297,432 +951,118 @@ class DiscussionThread(QThread):
                 self.update_signal.emit("系统", f"=== 第 {round_num} 轮讨论 ===")
 
                 # ============================ AI1发言阶段 ============================
-                # 更新状态，显示AI1正在发言
-                self.status_signal.emit(f"学者AI1 {self.model1_name} 正在发言...")
+                try:
+                    # 更新状态，显示AI1正在发言
+                    self.status_signal.emit(f"学者AI1 {self.model1_name} 正在发言...")
 
-                # 构建AI1的系统提示词，合并公共提示词和AI1专用提示词
-                ai1_system_prompt = discussion_common_prompt
-                if discussion_ai1_prompt:
-                    ai1_system_prompt += "\n" + discussion_ai1_prompt
+                    # 构建AI1的系统提示词，合并公共提示词和AI1专用提示词
+                    ai1_system_prompt = discussion_common_prompt
+                    if discussion_ai1_prompt:
+                        ai1_system_prompt += "\n" + discussion_ai1_prompt
 
-                # 构建AI1的上下文，包含主题和之前的讨论内容
-                ai1_context = f"主题：{self.topic}。\n\n"
-                if self.discussion_history:
-                    # 添加之前的讨论内容，跳过系统提示词
-                    for i, msg in enumerate(self.discussion_history[1:]):
-                        speaker = "AI1" if i % 2 == 0 else "AI2"
-                        ai1_context += f"{speaker}：{msg['content']}\n\n"
-                # 添加AI1的任务指令
-                ai1_context += "请继续提供你的观点和分析。"
+                    # 构建AI1的上下文，包含主题和之前的讨论内容
+                    ai1_context = f"主题：{self.topic}。\n\n"
+                    if self.discussion_history:
+                        # 添加之前的讨论内容，跳过系统提示词
+                        for i, msg in enumerate(self.discussion_history[1:]):
+                            speaker = "AI1" if i % 2 == 0 else "AI2"
+                            ai1_context += f"{speaker}：{msg['content']}\n\n"
+                    # 添加AI1的任务指令
+                    ai1_context += "请继续提供你的观点和分析。"
 
-                # 构建完整的AI1消息历史
-                ai1_messages = [
-                    {"role": "system", "content": ai1_system_prompt},
-                    {"role": "user", "content": ai1_context},
-                ]
+                    # 构建完整的AI1消息历史
+                    ai1_messages = [
+                        {"role": "system", "content": ai1_system_prompt},
+                        {"role": "user", "content": ai1_context},
+                    ]
 
-                # 调用AI1获取响应，使用流式输出
-                ai1_response = self._get_ai_response(
-                    self.model1_name,
-                    self.model1_api,
-                    ai1_messages,
-                    stream=True,
-                    sender_prefix="学者AI1",
-                )
+                    # 调用AI1获取响应，使用流式输出
+                    ai1_response = self._get_ai_response(
+                        self.model1_name,
+                        self.model1_api,
+                        ai1_messages,
+                        stream=True,
+                        sender_prefix="学者AI1",
+                    )
 
-                # 检查是否需要停止线程
-                if self.is_stopped():
-                    logger.info(f"讨论线程已停止，AI1发言中断")
+                    # 检查是否需要停止线程
+                    if self.is_stopped():
+                        logger.info(f"讨论线程已停止，AI1发言中断")
+                        break
+
+                    # 将AI1的响应添加到讨论历史，使用"AI1"角色标识
+                    self.discussion_history.append({"role": "AI1", "content": ai1_response})
+                    logger.info(f"AI1发言完成，轮次: {round_num}")
+                    
+                    # 清理讨论历史，只保留最新的消息
+                    self._cleanup_discussion_history()
+                except Exception as e:
+                    logger.error(f"AI1发言阶段出错: {str(e)}")
+                    self._handle_error(e, "AI1发言")
                     break
-
-                # 将AI1的响应添加到讨论历史，使用"AI1"角色标识
-                self.discussion_history.append({"role": "AI1", "content": ai1_response})
-                logger.info(f"AI1发言完成，轮次: {round_num}")
 
                 # ============================ AI2发言阶段 ============================
-                # 更新状态，显示AI2正在发言
-                self.status_signal.emit(f"学者AI2 {self.model2_name} 正在回应...")
+                try:
+                    # 更新状态，显示AI2正在发言
+                    self.status_signal.emit(f"学者AI2 {self.model2_name} 正在发言...")
 
-                # 构建AI2的系统提示词，合并公共提示词和AI2专用提示词
-                ai2_system_prompt = discussion_common_prompt
-                if discussion_ai2_prompt:
-                    ai2_system_prompt += "\n" + discussion_ai2_prompt
+                    # 构建AI2的系统提示词，合并公共提示词和AI2专用提示词
+                    ai2_system_prompt = discussion_common_prompt
+                    if discussion_ai2_prompt:
+                        ai2_system_prompt += "\n" + discussion_ai2_prompt
 
-                # 构建AI2的上下文，包含主题和所有讨论内容（包括本轮AI1的发言）
-                ai2_context = f"主题：{self.topic}。\n\n"
-                for i, msg in enumerate(self.discussion_history[1:]):  # 跳过系统提示词
-                    speaker = "AI1" if i % 2 == 0 else "AI2"
-                    ai2_context += f"{speaker}：{msg['content']}\n\n"
-                # 添加AI2的任务指令
-                ai2_context += "请继续提供你的观点和分析。"
+                    # 构建AI2的上下文，包含主题和之前的讨论内容
+                    ai2_context = f"主题：{self.topic}。\n\n"
+                    if self.discussion_history:
+                        # 添加之前的讨论内容，跳过系统提示词
+                        for i, msg in enumerate(self.discussion_history[1:]):
+                            speaker = "AI1" if i % 2 == 0 else "AI2"
+                            ai2_context += f"{speaker}：{msg['content']}\n\n"
+                    # 添加AI2的任务指令
+                    ai2_context += "请继续提供你的观点和分析。"
 
-                # 构建完整的AI2消息历史
-                ai2_messages = [
-                    {"role": "system", "content": ai2_system_prompt},
-                    {"role": "user", "content": ai2_context},
-                ]
+                    # 构建完整的AI2消息历史
+                    ai2_messages = [
+                        {"role": "system", "content": ai2_system_prompt},
+                        {"role": "user", "content": ai2_context},
+                    ]
 
-                # 调用AI2获取响应，使用流式输出
-                ai2_response = self._get_ai_response(
-                    self.model2_name,
-                    self.model2_api,
-                    ai2_messages,
-                    stream=True,
-                    sender_prefix="学者AI2",
-                )
+                    # 调用AI2获取响应，使用流式输出
+                    ai2_response = self._get_ai_response(
+                        self.model2_name,
+                        self.model2_api,
+                        ai2_messages,
+                        stream=True,
+                        sender_prefix="学者AI2",
+                    )
 
-                # 检查是否需要停止线程
-                if self.is_stopped():
-                    logger.info(f"讨论线程已停止，AI2发言中断")
+                    # 检查是否需要停止线程
+                    if self.is_stopped():
+                        logger.info(f"讨论线程已停止，AI2发言中断")
+                        break
+
+                    # 将AI2的响应添加到讨论历史，使用"AI2"角色标识
+                    self.discussion_history.append({"role": "AI2", "content": ai2_response})
+                    logger.info(f"AI2发言完成，轮次: {round_num}")
+                    
+                    # 清理讨论历史，只保留最新的消息
+                    self._cleanup_discussion_history()
+                except Exception as e:
+                    logger.error(f"AI2发言阶段出错: {str(e)}")
+                    self._handle_error(e, "AI2发言")
                     break
-
-                # 将AI2的响应添加到讨论历史，使用"AI2"角色标识
-                self.discussion_history.append({"role": "AI2", "content": ai2_response})
-                logger.info(f"AI2发言完成，轮次: {round_num}")
 
                 # ============================ 本轮讨论结束 ============================
 
+            # 计算讨论总耗时
             total_time = time.time() - self.start_time
             self.status_signal.emit(f"讨论结束，总耗时: {total_time:.2f} 秒")
+
             # 添加讨论结束消息到讨论历史
-            self.update_signal.emit("系统", "讨论结束")
+            self.update_signal.emit("系统", "=== 讨论结束 ===")
             self.finished_signal.emit()
-
         except Exception as e:
-            error_msg = f"讨论失败: {str(e)}"
-            logger.error(error_msg)
-            self.error_signal.emit(error_msg)
+            # 统一处理所有异常
+            logger.error(f"讨论线程主循环出错: {str(e)}")
+            self._handle_error(e, "讨论")
             self.finished_signal.emit()
-
-    def _get_ai_response(
-        self, model_name, api, messages, stream=False, sender_prefix="学者AI1"
-    ):
-        """
-        获取AI模型的响应，支持流式输出
-
-        Args:
-            model_name: 模型名称
-            api: API类型
-            messages: 消息历史
-            stream: 是否使用流式输出
-            sender_prefix: 发送者前缀，用于区分AI1和AI2
-
-        Returns:
-            str: AI回复内容
-        """
-        response = ""
-        try:
-            # 实时获取最新温度值
-            current_temperature = self.temperature
-            if self.config_panel:
-                current_temperature = self.config_panel.get_temperature()
-
-            # 根据API类型选择不同的发送方法
-            if api == "ollama":
-                response = self._send_ollama_message(
-                    model_name,
-                    messages,
-                    stream=stream,
-                    sender_prefix=sender_prefix,
-                    temperature=current_temperature,
-                )
-            elif api == "openai":
-                response = self._send_openai_message(
-                    model_name,
-                    messages,
-                    stream=stream,
-                    sender_prefix=sender_prefix,
-                    temperature=current_temperature,
-                )
-            elif api == "deepseek":
-                response = self._send_deepseek_message(
-                    model_name,
-                    messages,
-                    stream=stream,
-                    sender_prefix=sender_prefix,
-                    temperature=current_temperature,
-                )
-            else:
-                response = f"不支持的API类型: {api}"
-        except Exception as e:
-            logger.error(f"获取AI响应失败: {str(e)}")
-            response = f"抱歉，我暂时无法提供观点。错误: {str(e)}"
-
-        return response
-
-    def _send_ollama_message(
-        self,
-        model_name,
-        messages,
-        stream=False,
-        sender_prefix="学者AI1",
-        temperature=None,
-    ):
-        """
-        发送消息到Ollama API，支持流式输出
-
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-            sender_prefix: 发送者前缀，用于区分AI1和AI2
-            temperature: 生成文本的随机性
-
-        Returns:
-            str: AI回复内容
-        """
-        base_url = self.api_settings_widget.get_ollama_base_url()
-        import requests
-        import json
-
-        full_response = ""
-
-        # 使用传入的温度值，如果没有则使用默认值
-        if temperature is None:
-            temperature = self.temperature
-            if self.config_panel:
-                temperature = self.config_panel.get_temperature()
-
-        if stream:
-            # 使用流式响应
-            response = requests.post(
-                f"{base_url}/api/chat",
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "stream": True,
-                },
-                stream=True,
-            )
-            response.raise_for_status()
-
-            # 处理流式响应
-            for chunk in response.iter_lines(decode_unicode=True):
-                if self.is_stopped():
-                    break
-
-                if chunk:
-                    try:
-                        chunk_data = json.loads(chunk)
-                        if (
-                            "message" in chunk_data
-                            and "content" in chunk_data["message"]
-                        ):
-                            content = chunk_data["message"]["content"]
-                            if content:
-                                full_response += content
-                                # 发送流式更新信号
-                                self.stream_update_signal.emit(
-                                    f"{sender_prefix} {model_name}",
-                                    full_response,
-                                    model_name,
-                                )
-                    except json.JSONDecodeError as e:
-                        logger.error(f"解析Ollama流式响应失败: {str(e)}")
-        else:
-            # 使用非流式响应
-            response_data = requests.post(
-                f"{base_url}/api/chat",
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "stream": False,
-                },
-            )
-            response_data.raise_for_status()
-            data = response_data.json()
-            full_response = data.get("message", {}).get("content", "")
-
-        return full_response
-
-    def _send_openai_message(
-        self,
-        model_name,
-        messages,
-        stream=False,
-        sender_prefix="学者AI1",
-        temperature=None,
-    ):
-        """
-        发送消息到OpenAI API，支持流式输出
-
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-            sender_prefix: 发送者前缀，用于区分AI1和AI2
-            temperature: 生成文本的随机性
-
-        Returns:
-            str: AI回复内容
-        """
-        api_key = self.api_settings_widget.get_openai_api_key()
-        import requests
-        import json
-
-        # 使用传入的温度值，如果没有则使用默认值
-        if temperature is None:
-            temperature = self.temperature
-            if self.config_panel:
-                temperature = self.config_panel.get_temperature()
-
-        full_response = ""
-
-        if stream:
-            # 使用流式响应
-            response = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "stream": True,
-                },
-                stream=True,
-            )
-            response.raise_for_status()
-
-            # 处理流式响应
-            for chunk in response.iter_lines(decode_unicode=True):
-                if self.is_stopped():
-                    break
-
-                if chunk and chunk.startswith("data: "):
-                    try:
-                        chunk_data = json.loads(chunk[6:])
-                        if "choices" in chunk_data and len(chunk_data["choices"]) > 0:
-                            delta = chunk_data["choices"][0].get("delta", {})
-                            if "content" in delta:
-                                content = delta["content"]
-                                full_response += content
-                                # 发送流式更新信号
-                                self.stream_update_signal.emit(
-                                    f"{sender_prefix} {model_name}",
-                                    full_response,
-                                    model_name,
-                                )
-                    except json.JSONDecodeError as e:
-                        logger.error(f"解析OpenAI流式响应失败: {str(e)}")
-        else:
-            # 使用非流式响应
-            response_data = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "stream": False,
-                },
-            )
-            response_data.raise_for_status()
-            data = response_data.json()
-            full_response = (
-                data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
-
-        return full_response
-
-    def _send_deepseek_message(
-        self,
-        model_name,
-        messages,
-        stream=False,
-        sender_prefix="学者AI1",
-        temperature=None,
-    ):
-        """
-        发送消息到DeepSeek API，支持流式输出
-
-        Args:
-            model_name: 模型名称
-            messages: 消息历史
-            stream: 是否使用流式输出
-            sender_prefix: 发送者前缀，用于区分AI1和AI2
-            temperature: 生成文本的随机性
-
-        Returns:
-            str: AI回复内容
-        """
-        api_key = self.api_settings_widget.get_deepseek_api_key()
-        import requests
-        import json
-
-        # 使用传入的温度值，如果没有则使用默认值
-        if temperature is None:
-            temperature = self.temperature
-            if self.config_panel:
-                temperature = self.config_panel.get_temperature()
-
-        full_response = ""
-
-        if stream:
-            # 使用流式响应
-            response = requests.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "stream": True,
-                },
-                stream=True,
-            )
-            response.raise_for_status()
-
-            # 处理流式响应
-            for chunk in response.iter_lines(decode_unicode=True):
-                if self.is_stopped():
-                    break
-
-                if chunk and chunk.startswith("data: "):
-                    try:
-                        chunk_data = json.loads(chunk[6:])
-                        if "choices" in chunk_data and len(chunk_data["choices"]) > 0:
-                            delta = chunk_data["choices"][0].get("delta", {})
-                            if "content" in delta:
-                                content = delta["content"]
-                                full_response += content
-                                # 发送流式更新信号
-                                self.stream_update_signal.emit(
-                                    f"{sender_prefix} {model_name}",
-                                    full_response,
-                                    model_name,
-                                )
-                    except json.JSONDecodeError as e:
-                        logger.error(f"解析DeepSeek流式响应失败: {str(e)}")
-        else:
-            # 使用非流式响应
-            response_data = requests.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "stream": False,
-                },
-            )
-            response_data.raise_for_status()
-            data = response_data.json()
-            full_response = (
-                data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
-
-        return full_response

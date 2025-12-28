@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QTextEdit,
     QSpinBox,
     QDoubleSpinBox,
     QGroupBox,
@@ -57,14 +58,45 @@ class ConfigPanel(QWidget):
         config_layout.setContentsMargins(10, 5, 10, 10)
         config_layout.setSpacing(12)
 
-        # 主题输入
-        topic_layout = QHBoxLayout()
+        # 主题输入，模仿聊天输入框设计
+        topic_layout = QVBoxLayout()
         topic_layout.setSpacing(8)
         self.topic_label = QLabel(i18n.translate("discussion_topic"))
         topic_layout.addWidget(self.topic_label, alignment=Qt.AlignVCenter)
-        self.topic_edit = create_line_edit(
-            i18n.translate("discussion_topic_placeholder"), self.styles["line_edit"]
-        )
+        
+        # 使用QTextEdit实现多行输入，完全模仿聊天输入框
+        self.topic_edit = QTextEdit()
+        self.topic_edit.setPlaceholderText(i18n.translate("discussion_topic_placeholder"))
+        
+        # 设置样式，与聊天输入框保持一致
+        self.topic_edit.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 10pt;
+                background-color: #ffffff;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                transition: all 0.2s ease;
+            }
+            QTextEdit:focus {
+                border-color: #4caf50;
+                box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+                outline: none;
+            }
+        """)
+        
+        # 设置最大高度（约5行）
+        self.topic_edit.setMaximumHeight(100)
+        # 设置初始高度（约1行）
+        self.topic_edit.setFixedHeight(30)
+        # 设置垂直滚动条策略
+        self.topic_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # 连接文本变化信号，自动调整高度
+        self.topic_edit.textChanged.connect(self._adjust_topic_height)
+        
+        # 添加到布局
         topic_layout.addWidget(self.topic_edit)
         config_layout.addLayout(topic_layout)
 
@@ -180,7 +212,35 @@ class ConfigPanel(QWidget):
         Returns:
             str: 讨论主题
         """
-        return self.topic_edit.text().strip()
+        # 获取所有文本内容，包括换行符，确保控件内所有字符都属于讨论主题
+        return self.topic_edit.toPlainText().strip()
+    
+    def _adjust_topic_height(self) -> None:
+        """
+        自动调整主题输入框的高度，默认显示1行，最多显示5行
+        完全模仿聊天输入框的设计
+        """
+        # 禁用固定高度限制，允许自动调整
+        self.topic_edit.setFixedHeight(0)
+        
+        # 获取内容高度
+        content_height = self.topic_edit.document().size().height()
+        
+        # 设置固定高度范围
+        max_height = 100  # 最大高度（约5行）
+        min_height = 30  # 最小高度（约1行）
+        
+        # 计算合适的高度，添加20px的内边距
+        new_height = int(content_height + 20)
+        
+        # 限制在最小和最大高度之间
+        if new_height < min_height:
+            new_height = min_height
+        elif new_height > max_height:
+            new_height = max_height
+        
+        # 使用setFixedHeight来设置精确的高度
+        self.topic_edit.setFixedHeight(new_height)
 
     def get_rounds(self) -> int:
         """获取讨论轮数
@@ -212,7 +272,9 @@ class ConfigPanel(QWidget):
         Args:
             topic: 讨论主题
         """
-        self.topic_edit.setText(topic)
+        self.topic_edit.setPlainText(topic)
+        # 调整高度以适应内容
+        self._adjust_topic_height()
 
     def set_rounds(self, rounds: int) -> None:
         """设置讨论轮数

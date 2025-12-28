@@ -5,52 +5,357 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2025-12-28
+
+### Changed
+- 更新软件版本号从0.3.9到0.3.10
+
+### Fixed
+- 修复了设置保存时确认对话框弹出多次的问题
+- 优化了信号连接管理，避免重复连接导致的问题
+- 改进了语言切换时的保存逻辑，不再显示确认对话框
+
+## [0.3.9] - 2025-12-28
+
+### Added
+- 添加配置文件支持，允许用户通过YAML配置文件自定义应用行为
+- 实现日志分级和旋转功能，避免日志文件过大
+- 在Web后端添加健康检查端点(/health)，便于监控应用状态
+
+### Changed
+- 更新requirements.txt，添加PyYAML依赖
+- 修改日志配置，支持配置文件驱动的日志设置
+- 更新软件版本号从0.3.8到0.3.9
+
+### Fixed
+- 改进了Ollama Cloud API的错误处理，将"QMetaObject.invokeMethod() call failed"错误替换为更友好的"Ollama Cloud API 认证失败：无效的 API 密钥"提示
+- 增强了Ollama Cloud API的调试日志，便于排查认证问题
+
+## [0.3.8] - 2025-12-28
+
+### Added
+- 为辩论标签页的 `_send_ollama_message` 方法添加了 `temperature` 参数，支持外部传入温度值
+
+### Changed
+- 更新软件版本号从 0.3.7 到 0.3.8
+- 优化了 `_send_ollama_message` 方法，确保流式和非流式响应都使用正确的温度参数
+
+### Fixed
+- 修复了 Ollama Cloud 模型缓存不更新的问题
+- 修复了在聊天标签页中选择 Ollama Cloud 模型发送消息时出现的 401 错误
+- 修复了辩论标签页中使用 Ollama Cloud 模型时辩论历史输出不完整的问题
+- 优化和同步了所有国际化文件，确保所有翻译文件包含完整且一致的翻译键
+
+# CHANGELOG
+
 ## [0.3.7] - 2025-12-26
 
-### Added
-- Added "修改" (Edit) button to discussion history bubbles
-- Added message editing functionality with auto-save feature
+### 功能改进
 
-### Changed
-- Updated button order in discussion history: Edit, Copy, Delete
-- Optimized all internationalization language packs for accuracy and brevity
-- Updated version number from 0.3.6 to 0.3.7
-- Updated configuration files (__init__.py, about_tab.py, AI_Talking_Setup.iss)
-- Created v0.3.7 RELEASE_NOTES.md and latest.json files
+#### 讨论功能增强
+- ✨ 在讨论历史气泡中添加了"修改"按钮，按钮顺序调整为：修改、复制、删除
+- ✨ 实现了修改气泡内容的功能，支持自动保存
+- ✨ 修复了按钮功能失效问题，确保修改、复制、删除功能正常工作
 
-### Fixed
-- Fixed button functionality in discussion and debate history
-- Ensured proper event binding for dynamically added elements
-- Fixed CSS selector issues for button targeting
+#### 国际化优化
+- ✨ 优化了所有国际化语言包（ar.json, de.json, es.json, fr.json, ko.json, ru.json）
+- ✨ 确保翻译准确、简洁，符合短语或短句形式
+- ✨ 以英文语言包为基准，保持翻译一致性
 
-## [0.3.6] - 2025-12-25
+### 版本升级
+- 🔧 升级软件版本到0.3.7
+- 🔧 更新了相关配置文件（__init__.py, about_tab.py, AI_Talking_Setup.iss等）
+- 🔧 创建了v0.3.7版本的RELEASE_NOTES.md和latest.json文件
 
-### Added
-- Added support for Korean, German, Spanish, French, Arabic, and Russian languages
-- Added missing translation keys to all language files
+## [0.3.6] - 2025-12-26
 
-### Changed
-- Updated version number from 0.3.4 to 0.3.6
-- Updated AI_Talking.spec file with all necessary hidden import modules
-- Updated pathex and datas configurations in spec file to ensure proper packaging of resources
+### 功能改进
 
-### Fixed
-- Fixed discussion history button functionality by changing from positional selectors to class selectors (edit-btn, copy-btn, delete-btn)
-- Fixed language switching crash
-- Fixed state messages not updating with language changes
-- Fixed JSON syntax errors in language files
-- Fixed proper packaging of i8n directory and resources directory
-- Ensured all language files use correct language content
+#### 按钮功能修复
+- ✨ 修复了讨论和辩论历史中按钮功能失效问题
+- ✨ 改进了事件绑定机制，确保动态添加的元素也能正确绑定事件
+- ✨ 调整了按钮选择器，使用更具体的CSS选择器
 
-## [0.3.5] - 2025-12-24
+## [0.3.5] - 2025-12-25
 
-### Changed
-- Updated version number from 0.3.4 to 0.3.5
+### 功能改进
 
-## [0.3.4] - 2025-12-23
+#### 按钮功能修复
+- ✨ 修复讨论和辩论标签页中气泡按钮（编辑、复制、删除）有时无法使用的问题
+- ✨ 为按钮添加具体的类名，确保选择器的可靠性
+- ✨ 改进事件绑定逻辑，使用基于类名的选择器替代基于位置的选择器
+- ✨ 更新reinit_ui方法，确保语言切换后按钮事件仍然正常工作
 
-### Initial Release
-- First public release of AI_Talking application
-- Basic chat, discussion, and debate functionality
-- Support for multiple AI models
-- Internationalization support for English, Chinese (Simplified), Chinese (Traditional), and Japanese
+#### 翻译系统优化
+- ✨ 修复翻译键缺失的警告
+- ✨ 替换message_widget.py中使用的button_edit、button_copy和button_delete翻译键为现有的edit、copy和delete键
+
+### 代码优化
+
+#### 前端代码
+- 🔧 改进initMessageActions函数，使用更可靠的类选择器
+- 🔧 优化reinit_ui方法，添加保存和恢复聊天内容的逻辑
+
+#### 翻译系统
+- 🔧 确保所有翻译键的一致性
+
+## [0.3.4] - 2025-12-24
+
+### 功能改进
+
+#### 国际化支持
+- ✨ 修复讨论和辩论标签页状态信息的国际化问题
+- ✨ 修复关于标签页版本显示的国际化问题
+- ✨ 修复设置标签页的硬编码问题
+- ✨ 添加缺失的翻译键，支持完整的多语言切换
+
+### 代码优化
+
+#### 翻译系统
+- 🔧 完善翻译键管理，确保所有UI元素都能随语言切换
+- 🔧 优化翻译文件结构，统一翻译键命名规范
+
+#### 版本管理
+- 🔧 更新版本号到0.3.4
+
+## [0.3.3] - 2025-12-23
+
+### 功能改进
+
+#### 启动优化
+- ✨ 实现启动画面组件，提升用户体验
+- ✨ 重构主应用初始化流程，优化启动性能
+- ✨ 实现异步加载机制，减少启动时间
+- ✨ 添加延迟初始化逻辑，加速程序启动
+
+#### UI/UX改进
+- ✨ 修复logo显示问题，确保讨论、辩论和批量处理界面的logo正常显示
+- ✨ 调整批量处理功能中logo位置到"批量类型选择"的最右边
+- ✨ 增加桌面应用窗口高度300px，提供更大的工作空间
+
+### 代码优化
+
+#### 资源管理
+- 🔧 增强ResourceManager类，添加文件存在检查和详细错误日志
+- 🔧 实现logo加载失败的文本 fallback 机制，确保品牌标识始终可见
+
+#### 版本管理
+- 🔧 更新版本号到0.3.3
+
+## [0.3.1] - 2025-12-22
+
+### 功能改进
+
+#### 聊天功能
+- ✨ 为聊天历史消息添加修改功能，支持使用RichText编辑器修改消息内容
+- ✨ 实现聊天气泡下的三个按钮：修改、复制、删除
+- 完善聊天历史管理，支持消息内容的编辑和更新
+
+#### 讨论功能
+- ✨ 为讨论历史消息添加修改功能，支持使用RichText编辑器修改消息内容
+- ✨ 实现讨论气泡下的三个按钮：修改、复制、删除
+- 优化讨论历史显示，确保修改后的内容正确渲染
+
+#### 辩论功能
+- ✨ 为辩论历史消息添加修改功能，支持使用RichText编辑器修改消息内容
+- ✨ 实现辩论气泡下的三个按钮：修改、复制、删除
+- 优化辩论历史显示，确保修改后的内容正确渲染
+
+### 代码优化
+
+#### 前端代码
+- 🔧 为所有功能添加了详细的JSDoc注释
+- 增强了消息操作功能的代码可读性
+- 改进了RichText编辑器的用户体验
+
+#### 后端代码
+- 优化了聊天历史管理，支持消息内容的更新
+- 增强了错误处理机制
+
+### 文档更新
+
+- 📝 更新了README.md，添加了修改消息功能的描述
+- 📝 更新了ARCHITECTURE.md，更新了主要模块说明
+- 📝 完善了代码注释，提高了代码可维护性
+
+## [0.3.0] - 2025-12-22
+
+### 功能改进
+
+#### 聊天功能
+- ✨ 实现智能滚动功能，支持手动滚动暂停和滚动到底部恢复自动滚动
+- ✨ 优化聊天历史气泡，移除"回复"按钮，只保留"复制"和"删除"功能
+- 🔧 改进剪贴板功能，实现剪贴板API兼容性处理，添加fallbackCopyTextToClipboard()函数
+- 修复JavaScript错误，包括语法错误和类型错误
+
+#### 讨论功能
+- ✨ 实现智能滚动功能，支持手动滚动暂停和滚动到底部恢复自动滚动
+- 🔧 重命名清空历史记录方法为clear_discussion_history()，提高代码可读性
+- 优化讨论历史显示，确保内容正确换行
+- 改进剪贴板功能，添加兼容性处理
+
+#### 辩论功能
+- ✨ 实现智能滚动功能，支持手动滚动暂停和滚动到底部恢复自动滚动
+- 🔧 重命名清空历史记录方法为clear_debate_history()，提高代码可读性
+- 优化辩论历史显示，确保内容正确换行
+- 改进剪贴板功能，添加兼容性处理
+
+#### 批量处理功能
+- ✨ 实现智能滚动功能，支持手动滚动暂停和滚动到底部恢复自动滚动
+- 改进批量处理结果显示
+
+### 代码优化
+
+#### 前端代码
+- 🔧 重命名清空历史记录方法，从clear_history()改为更明确的名称：
+  - clear_discussion_history()
+  - clear_debate_history()
+- 修复JavaScript语法错误和类型错误
+- 增强DOM元素访问的安全性
+- 改进事件监听器配置
+
+#### 后端代码
+- 🔧 保持方法名一致性，添加clear_discussion_history()和clear_debate_history()方法别名
+- 优化聊天历史管理
+- 增强错误处理
+
+### 修复的问题
+
+#### 主要错误
+- 修复SyntaxError: unmatched '}'
+- 修复TypeError: Cannot read property 'send' of undefined
+- 修复TypeError: Cannot read property 'writeText' of undefined
+- 修复SyntaxError: f-string: expecting '=', or '!'
+- 修复SyntaxError from line continuation
+
+#### UI/UX问题
+- 修复聊天历史滚动问题
+- 优化聊天气泡样式和布局
+- 改进用户交互体验
+
+## [0.1.5] - 2025-12-18
+
+### 功能改进
+
+#### 核心功能
+- ✨ 新增批量处理功能，支持批量处理多个讨论主题
+- ✨ 新增关于我们页面，显示应用版本和开发团队信息
+- 💬 优化单聊模式，支持多种AI模型和API
+- 🔄 改进讨论模式，增强AI讨论的深度和连贯性
+- ⚖️ 优化辩论模式，完善辩论流程和结果显示
+- 📝 增强历史管理功能，支持批量操作和更好的搜索体验
+- 🔧 改进API配置界面，支持更多API参数设置
+
+#### 聊天功能
+- 调整发送消息按钮位置到输入框右侧
+- 增加发送按钮高度至60px，与输入框高度匹配
+- 优化聊天输入区域布局，使用flex布局实现输入框与按钮并排
+- 修复聊天历史显示，确保AI回复完整展示
+- 增加消息发送状态指示（正在思考...）
+
+#### 讨论功能
+- 修复讨论内容不显示问题
+- 修复模型名称包含冒号时消息内容被错误分割的问题
+- 改进讨论历史解析逻辑，使用第一个冒号分割消息内容
+- 确保讨论轮次正确显示
+
+#### 辩论功能
+- 修复辩论内容不显示问题
+- 修复辩论状态更新机制
+- 增加辩论历史元素智能选择
+- 修复辩论结果显示逻辑
+- 确保辩论轮次正确显示
+
+#### 模型管理
+- 修复模型下拉框不实时刷新问题
+- 实现保存设置后自动重新初始化模型列表
+- 增加页面加载时模型列表延迟初始化
+- 确保所有模式（讨论、辩论、单聊）的模型列表正确更新
+- 改进模型获取机制，增加错误处理和默认模型列表
+
+### 代码优化
+
+#### 前端代码
+- 移除重复的聊天标签内容
+- 增强DOM元素访问的安全性，添加空值检查
+- 改进事件监听器配置
+- 优化状态管理机制
+- 增强错误处理
+
+#### 后端代码
+- 优化API请求处理
+- 改进错误监控和日志记录
+- 增强AI聊天管理器的鲁棒性
+- 优化聊天历史管理
+
+#### 桌面应用
+- 改进MVC架构，增强代码模块化
+- 优化资源管理，减少内存占用
+- 增强线程池管理，提高多任务处理能力
+
+### 修复的问题
+
+#### 主要错误
+- 修复SyntaxError: Invalid left-hand side in assignment
+- 修复ReferenceError: axios is not defined
+- 修复TypeError: Cannot set properties of null
+- 修复HTTPConnectionPool连接失败问题
+- 修复Markdown渲染失败问题
+- 修复版本号不一致问题
+
+#### UI/UX问题
+- 修复标签页切换时内容不显示问题
+- 修复聊天历史滚动问题
+- 优化响应式设计
+- 改进用户交互反馈
+- 优化按钮和输入框的样式和布局
+
+### 架构改进
+
+#### 前端架构
+- 改进模块化设计
+- 增强服务层封装
+- 优化数据流管理
+
+#### 后端架构
+- 改进API设计
+- 增强错误监控机制
+- 优化资源管理
+
+#### 测试架构
+- 完善单元测试，提高代码覆盖率
+- 增加集成测试，确保模块间交互正常
+- 改进测试框架，便于持续集成
+
+## [0.1.4] - 2025-12-10
+
+### 功能改进
+- 实现基础聊天功能
+- 实现AI之间的讨论功能
+- 实现AI之间的辩论功能
+- 实现聊天历史管理
+- 实现API设置管理
+- 实现错误监控机制
+- 实现基础UI设计
+
+### 修复的问题
+- 修复聊天历史显示问题
+- 修复模型选择下拉框问题
+- 优化API请求处理
+
+## [0.1.0] - 2025-12-01
+
+### 初始版本
+
+- 实现基础聊天功能
+- 实现AI之间的讨论功能
+- 实现AI之间的辩论功能
+- 实现聊天历史管理
+- 实现API设置管理
+- 实现错误监控机制
+- 实现基础UI设计
+
+---
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

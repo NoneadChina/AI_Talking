@@ -17,13 +17,14 @@ from PyQt5.QtWidgets import (
     QLabel,
     QPushButton,
     QListWidget,
-    QTextEdit,
     QGroupBox,
     QMessageBox,
     QFileDialog,
     QSplitter,
     QListWidgetItem,
+    QSizePolicy,
 )
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 # 导入国际化管理器
 from utils.i18n_manager import i18n
@@ -131,9 +132,10 @@ class HistoryManagementTabWidget(QWidget):
 
         # 历史记录列表
         self.history_list = QListWidget()
-        self.history_list.setMaximumHeight(
-            200
-        )  # 设置更合适的最大高度，确保列表有足够空间显示多条记录
+        # 移除固定最大高度限制，使其能够根据窗口大小变化
+        self.history_list.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         self.history_list.itemClicked.connect(self.on_history_item_clicked)
         self.history_list.itemDoubleClicked.connect(self.on_history_item_double_clicked)
         self.history_list.setStyleSheet(
@@ -145,7 +147,7 @@ class HistoryManagementTabWidget(QWidget):
                 background-color: white;
             }
             QListWidget::item {
-                padding: 8px 12px;
+                padding: 4px 12px;
                 border-bottom: 1px solid #f0f0f0;
             }
             QListWidget::item:last-child {
@@ -161,76 +163,8 @@ class HistoryManagementTabWidget(QWidget):
         """)
         history_list_layout.addWidget(self.history_list)
 
-        # 上方控制按钮
-        top_control_layout = QHBoxLayout()
-        top_control_layout.setSpacing(8)
-
-        button_style = """
-            QPushButton {
-                padding: 8px 12px;
-                font-size: 9pt;
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                background-color: #f5f5f5;
-                transition: all 0.2s ease;
-            }
-            QPushButton:hover {
-                background-color: #e0e0e0;
-            }
-        """
-
-        self.load_history_button = QPushButton(i18n.translate("history_refresh"))
-        self.load_history_button.setStyleSheet(button_style)
-        self.load_history_button.clicked.connect(self.refresh_history_list)
-        top_control_layout.addWidget(self.load_history_button)
-
-        self.delete_history_button = QPushButton(
-            i18n.translate("history_delete_selected")
-        )
-        self.delete_history_button.setStyleSheet(button_style)
-        self.delete_history_button.clicked.connect(self.delete_selected_history)
-        self.delete_history_button.setEnabled(False)
-        top_control_layout.addWidget(self.delete_history_button)
-
-        self.clear_history_button = QPushButton(i18n.translate("history_clear_all"))
-        self.clear_history_button.setStyleSheet(
-            """
-            QPushButton {
-                padding: 8px 12px;
-                font-size: 9pt;
-                border: 1px solid #e57373;
-                border-radius: 6px;
-                background-color: #ffebee;
-                color: #c62828;
-                transition: all 0.2s ease;
-            }
-            QPushButton:hover {
-                background-color: #ffcdd2;
-            }
-        """)
-        self.clear_history_button.clicked.connect(self.clear_all_history)
-        top_control_layout.addWidget(self.clear_history_button)
-
-        top_control_layout.addStretch()
-        history_list_layout.addLayout(top_control_layout)
-
         self.history_list_group.setLayout(history_list_layout)
         top_layout.addWidget(self.history_list_group)
-
-        # 历史统计信息
-        self.history_stats_label = QLabel(i18n.translate("history_stats"))
-        self.history_stats_label.setStyleSheet(
-            """
-            QLabel {
-                font-size: 9pt;
-                color: #666;
-                background-color: white;
-                padding: 8px 12px;
-                border-radius: 6px;
-                border: 1px solid #ddd;
-            }
-        """)
-        top_layout.addWidget(self.history_stats_label)
 
         top_widget.setLayout(top_layout)
         splitter.addWidget(top_widget)
@@ -264,52 +198,119 @@ class HistoryManagementTabWidget(QWidget):
         history_detail_layout.setContentsMargins(10, 5, 10, 10)
         history_detail_layout.setSpacing(10)
 
-        # 历史详情文本框
-        self.history_detail_text = QTextEdit()
-        self.history_detail_text.setReadOnly(True)
-        self.history_detail_text.setLineWrapMode(QTextEdit.WidgetWidth)
+        # 历史详情浏览器控件
+        self.history_detail_text = QWebEngineView()
         self.history_detail_text.setStyleSheet(
             """
-            QTextEdit {
+            QWebEngineView {
                 border: 1px solid #ddd;
                 border-radius: 6px;
-                font-size: 10pt;
                 background-color: white;
-                padding: 10px;
-            }
-            QTextEdit:focus {
-                border-color: #4285f4;
-                box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.1);
             }
         """)
         history_detail_layout.addWidget(self.history_detail_text)
+        # 设置浏览器控件的大小策略，使其能够随窗体大小变化
+        self.history_detail_text.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
 
         self.history_detail_group.setLayout(history_detail_layout)
         bottom_layout.addWidget(self.history_detail_group)
 
-        # 下方控制按钮
-        bottom_control_layout = QHBoxLayout()
-        bottom_control_layout.setSpacing(8)
-
+        # 底部控制区域
+        bottom_control_widget = QWidget()
+        bottom_control_layout = QHBoxLayout(bottom_control_widget)
+        bottom_control_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_control_layout.setSpacing(10)
+        bottom_control_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
+        button_style = """
+            QPushButton {
+                padding: 8px 12px;
+                font-size: 9pt;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                background-color: #f5f5f5;
+                transition: all 0.2s ease;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+        """
+        
+        # 历史统计信息，靠左
+        self.history_stats_label = QLabel(i18n.translate("history_stats"))
+        self.history_stats_label.setStyleSheet(
+            """
+            QLabel {
+                font-size: 9pt;
+                color: #666;
+                background-color: white;
+                padding: 8px 12px;
+                border-radius: 6px;
+                border: 1px solid #ddd;
+            }
+        """)
+        bottom_control_layout.addWidget(self.history_stats_label)
+        
+        # 添加伸缩项，将按钮推到右侧
+        bottom_control_layout.addStretch()
+        
+        # 导出选中按钮
         self.export_history_button = QPushButton(i18n.translate("export_selected"))
         self.export_history_button.setStyleSheet(button_style)
         self.export_history_button.clicked.connect(self.export_selected_history)
         self.export_history_button.setEnabled(False)
         bottom_control_layout.addWidget(self.export_history_button)
-
+        
+        # 导出所有按钮
         self.export_all_button = QPushButton(i18n.translate("export_all"))
         self.export_all_button.setStyleSheet(button_style)
         self.export_all_button.clicked.connect(self.export_all_history)
         bottom_control_layout.addWidget(self.export_all_button)
-
-        bottom_control_layout.addStretch()
-        bottom_layout.addLayout(bottom_control_layout)
+        
+        # 刷新按钮
+        self.load_history_button = QPushButton(i18n.translate("history_refresh"))
+        self.load_history_button.setStyleSheet(button_style)
+        self.load_history_button.clicked.connect(self.refresh_history_list)
+        bottom_control_layout.addWidget(self.load_history_button)
+        
+        # 删除选中按钮
+        self.delete_history_button = QPushButton(
+            i18n.translate("history_delete_selected")
+        )
+        self.delete_history_button.setStyleSheet(button_style)
+        self.delete_history_button.clicked.connect(self.delete_selected_history)
+        self.delete_history_button.setEnabled(False)
+        bottom_control_layout.addWidget(self.delete_history_button)
+        
+        # 清空所有按钮
+        self.clear_history_button = QPushButton(i18n.translate("history_clear_all"))
+        self.clear_history_button.setStyleSheet(
+            """
+            QPushButton {
+                padding: 8px 12px;
+                font-size: 9pt;
+                border: 1px solid #e57373;
+                border-radius: 6px;
+                background-color: #ffebee;
+                color: #c62828;
+                transition: all 0.2s ease;
+            }
+            QPushButton:hover {
+                background-color: #ffcdd2;
+            }
+        """)
+        self.clear_history_button.clicked.connect(self.clear_all_history)
+        bottom_control_layout.addWidget(self.clear_history_button)
+        
+        bottom_layout.addWidget(bottom_control_widget)
 
         bottom_widget.setLayout(bottom_layout)
         splitter.addWidget(bottom_widget)
 
-        # 设置分栏比例
-        splitter.setSizes([250, 450])
+        # 设置分栏比例，让历史详情区域更大
+        splitter.setSizes([200, 500])
 
         layout.addWidget(splitter)
 
@@ -317,6 +318,13 @@ class HistoryManagementTabWidget(QWidget):
         self.refresh_history_list()
 
         self.setLayout(layout)
+        
+    def showEvent(self, event):
+        """
+        标签页显示事件，每次显示时刷新历史列表
+        """
+        super().showEvent(event)
+        self.refresh_history_list()
 
     def refresh_history_list(self):
         """
@@ -335,6 +343,9 @@ class HistoryManagementTabWidget(QWidget):
             count=len(self.all_chat_histories)
         )
         self.history_stats_label.setText(stats_text)
+
+        # 按结束时间倒序排序历史记录，最新的放在前面
+        self.all_chat_histories.sort(key=lambda x: x.get("end_time", ""), reverse=True)
 
         # 添加历史记录到列表
         for i, history in enumerate(self.all_chat_histories):
@@ -398,19 +409,78 @@ class HistoryManagementTabWidget(QWidget):
         if 0 <= index < len(self.all_chat_histories):
             history = self.all_chat_histories[index]
 
-            # 构建历史详情文本
-            detail_text = "# 聊天历史详情\n\n"
-            detail_text += f"**主题**: {history.get('topic', '无主题')}\n\n"
-            detail_text += f"**模型1**: {history.get('model1', '未知模型')} ({history.get('api1', '未知API')})\n"
-            detail_text += f"**模型2**: {history.get('model2', '未知模型')} ({history.get('api2', '未知API')})\n\n"
-            detail_text += f"**轮数**: {history.get('rounds', '未知')}\n"
-            detail_text += f"**开始时间**: {history.get('start_time', '未知')}\n"
-            detail_text += f"**结束时间**: {history.get('end_time', '未知')}\n\n"
-            detail_text += "## 聊天内容\n\n"
-            detail_text += history.get("chat_content", "无聊天内容")
+            # 构建历史详情HTML
+            detail_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset='utf-8'>
+                <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                <style>
+                    body {{
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                        line-height: 1.6;
+                        color: #333;
+                        margin: 15px;
+                        padding: 0;
+                    }}
+                    h1 {{
+                        color: #2c3e50;
+                        border-bottom: 2px solid #eaecef;
+                        padding-bottom: 0.3em;
+                    }}
+                    h2 {{
+                        color: #2c3e50;
+                        border-bottom: 1px solid #eaecef;
+                        padding-bottom: 0.3em;
+                    }}
+                    p {{
+                        margin: 0.5em 0;
+                    }}
+                    strong {{
+                        color: #2c3e50;
+                    }}
+                    .chat-content {{
+                        background-color: #f8f9fa;
+                        padding: 15px;
+                        border-radius: 8px;
+                        border: 1px solid #e9ecef;
+                        margin-top: 10px;
+                    }}
+                    .history-item {{
+                        margin: 10px 0;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>聊天历史详情</h1>
+                <div class='history-item'><strong>主题</strong>: {topic}</div>
+                <div class='history-item'><strong>模型1</strong>: {model1} ({api1})</div>
+                <div class='history-item'><strong>模型2</strong>: {model2} ({api2})</div>
+                <div class='history-item'><strong>轮数</strong>: {rounds}</div>
+                <div class='history-item'><strong>开始时间</strong>: {start_time}</div>
+                <div class='history-item'><strong>结束时间</strong>: {end_time}</div>
+                <h2>聊天内容</h2>
+                <div class='chat-content'>{chat_content}</div>
+            </body>
+            </html>
+            """
+            
+            # 替换占位符
+            detail_html = detail_html.format(
+                topic=history.get('topic', '无主题'),
+                model1=history.get('model1', '未知模型'),
+                api1=history.get('api1', '未知API'),
+                model2=history.get('model2', '未知模型'),
+                api2=history.get('api2', '未知API'),
+                rounds=history.get('rounds', '未知'),
+                start_time=history.get('start_time', '未知'),
+                end_time=history.get('end_time', '未知'),
+                chat_content=history.get("chat_content", "无聊天内容")
+            )
 
             # 显示详情
-            self.history_detail_text.setMarkdown(detail_text)
+            self.history_detail_text.setHtml(detail_html)
 
     def delete_selected_history(self):
         """
@@ -444,7 +514,7 @@ class HistoryManagementTabWidget(QWidget):
             self.refresh_history_list()
 
             # 清空详情
-            self.history_detail_text.clear()
+            self.history_detail_text.setHtml("<html><body style='margin: 15px;'><p>请选择一条历史记录查看详情</p></body></html>")
 
             # 禁用按钮
             self.delete_history_button.setEnabled(False)
@@ -482,7 +552,7 @@ class HistoryManagementTabWidget(QWidget):
             self.refresh_history_list()
 
             # 清空详情
-            self.history_detail_text.clear()
+            self.history_detail_text.setHtml("<html><body style='margin: 15px;'><p>请选择一条历史记录查看详情</p></body></html>")
 
             # 禁用按钮
             self.delete_history_button.setEnabled(False)
@@ -518,7 +588,8 @@ class HistoryManagementTabWidget(QWidget):
 
                 # 写入文件
                 with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(selected_histories, f, ensure_ascii=False, indent=2)
+                    # 添加default=str参数，将不可序列化的对象转换为字符串
+                    json.dump(selected_histories, f, ensure_ascii=False, indent=2, default=str)
 
                 QMessageBox.information(
                     self,
@@ -550,7 +621,8 @@ class HistoryManagementTabWidget(QWidget):
             try:
                 # 写入文件
                 with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(self.all_chat_histories, f, ensure_ascii=False, indent=2)
+                    # 添加default=str参数，将不可序列化的对象转换为字符串
+                    json.dump(self.all_chat_histories, f, ensure_ascii=False, indent=2, default=str)
 
                 QMessageBox.information(
                     self,

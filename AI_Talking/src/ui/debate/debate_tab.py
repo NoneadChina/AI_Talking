@@ -290,6 +290,45 @@ class DebateTabWidget(QWidget):
         self.summary_thread = None
         # 清理讨论线程资源（延迟清理，确保总结已生成）
         self.chat_thread = None
+        
+        # 自动保存辩论历史到历史管理器
+        try:
+            from utils.chat_history_manager import ChatHistoryManager
+            history_manager = ChatHistoryManager()
+            
+            # 获取当前时间
+            from datetime import datetime
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 获取当前HTML内容
+            def get_html_finished(html):
+                # 获取AI配置
+                api1, model1 = self.ai_config_panel.get_ai1_config()
+                api2, model2 = self.ai_config_panel.get_ai2_config()
+                api3, model3 = self.ai_config_panel.get_ai3_config()
+                
+                # 获取辩论主题
+                topic = self.config_panel.get_topic()
+                
+                # 保存历史记录
+                history_manager.add_history(
+                    func_type="辩论",
+                    topic=topic,
+                    model1_name=model1,
+                    model2_name=model2,
+                    api1=api1,
+                    api2=api2,
+                    rounds=self.config_panel.get_rounds(),
+                    chat_content=html,
+                    start_time=current_time,
+                    end_time=current_time,
+                )
+                logger.info("辩论历史已自动保存到历史管理器")
+            
+            self.chat_history_panel.debate_history_text.page().toHtml(get_html_finished)
+        except Exception as e:
+            logger.error(f"自动保存辩论历史到历史管理器失败: {str(e)}")
+        
         logger.info("裁判报告生成完成，所有线程资源已清理")
 
     def _on_summary_error(self, error):

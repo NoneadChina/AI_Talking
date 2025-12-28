@@ -223,7 +223,19 @@
   "menu_theme_light": "Claro",
   "menu_zh_cn": "简体中文",
   "menu_zh_tw": "繁体中文",
-  "setting_enter": "Introducir",
+  "setting_enter": "Entrada",
   "setting_key": "Clave",
-  "setting_base_url": "URL base"
+  "setting_base_url": "URL base",
+  "debate_judgment_completed": "Juez de debate completado",
+  "setting_ollama_cloud": "Ollama Cloud",
+  "setting_ollama_cloud_key": "Clave API:",
+  "setting_ollama_cloud_url": "URL base de API:",
+  "update_available": "New Version Available",
+  "update_available_message": "New version {version} found, would you like to download now?\n\nRelease Notes:\n{release_notes}",
+  "update_downloaded": "Update Downloaded",
+  "update_downloaded_message": "Update package has been downloaded, it will be installed when the application closes",
+  "pdf_exported": "Chat history has been exported to {path}",
+  "pdf_export_failed": "PDF generation failed",
+  "confirm_save": "Guardar configuración",
+  "confirm_save_msg": "¿Quieres guardar la configuración?"
 }

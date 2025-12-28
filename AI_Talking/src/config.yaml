@@ -1,0 +1,27 @@
+api:
+  max_retries: 3
+  retry_delay: 2.0
+  timeout: 300
+app:
+  debug: false
+  language: auto
+  name: AI Talking
+  version: 0.3.7
+  window:
+    height: 1000
+    width: 900
+    x: 100
+    y: 100
+chat:
+  auto_save: true
+  max_history_length: 50
+  save_interval: 30
+logging:
+  backup_count: 5
+  file_path: logs/app.log
+  level: INFO
+  max_bytes: 10485760
+update:
+  auto_check: true
+  auto_update: false
+  check_interval: 24

@@ -174,7 +174,7 @@ class AIDebateConfigPanel(QWidget):
 
         # 创建API下拉框并连接信号
         api_combo = create_combo_box(
-            ["ollama", "openai", "deepseek"], default_api, self.styles["combo_box"]
+            ["Ollama", "OpenAI", "DeepSeek", "Ollama Cloud"], default_api, self.styles["combo_box"]
         )
         api_combo.setFixedWidth(180)
 
@@ -219,7 +219,7 @@ class AIDebateConfigPanel(QWidget):
         # 添加加载提示
         model_combo.addItem(i18n.translate("loading"))
 
-        if api == "ollama":
+        if api == "Ollama":
             # 从ModelManager异步获取Ollama模型列表
             from ui.api_settings import APISettingsWidget
 
@@ -238,22 +238,46 @@ class AIDebateConfigPanel(QWidget):
             model_manager.async_load_ollama_models(
                 base_url, on_models_loaded, on_load_error
             )
+        elif api == "Ollama Cloud":
+            # 从ModelManager异步获取Ollama Cloud模型列表
+            def on_models_loaded(models):
+                """模型加载完成后的回调函数"""
+                self._on_models_loaded(model_combo, api, models)
+
+            def on_load_error(error):
+                """模型加载失败后的回调函数"""
+                logger.error(f"异步加载Ollama Cloud模型列表失败: {error}")
+                self._on_models_loaded(model_combo, api, [])
+
+            model_manager.async_load_ollama_cloud_models(
+                on_models_loaded, on_load_error
+            )
         else:
             # 非Ollama API，使用同步加载
             models = []
             try:
-                if api == "openai":
-                    # 这里可以添加从OpenAI API获取模型列表的逻辑
-                    models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
-                elif api == "deepseek":
-                    # 这里可以添加从DeepSeek API获取模型列表的逻辑
-                    models = ["deepseek-chat", "deepseek-coder"]
+                from utils.ai_service import AIServiceFactory
+                
+                if api == "OpenAI":
+                    # 使用AIServiceFactory获取OpenAI模型列表
+                    from ui.api_settings import APISettingsWidget
+                    api_settings = APISettingsWidget()
+                    api_key = api_settings.get_openai_api_key()
+                    ai_service = AIServiceFactory.create_ai_service("openai", api_key=api_key)
+                    models = ai_service.get_models()
+                elif api == "DeepSeek":
+                    # 使用AIServiceFactory获取DeepSeek模型列表
+                    from ui.api_settings import APISettingsWidget
+                    api_settings = APISettingsWidget()
+                    api_key = api_settings.get_deepseek_api_key()
+                    ai_service = AIServiceFactory.create_ai_service("deepseek", api_key=api_key)
+                    models = ai_service.get_models()
             except Exception as e:
                 logger.error(f"获取{api}模型列表失败: {str(e)}")
                 # 如果API调用失败，使用默认模型列表
-                if api == "openai":
+                if api == "OpenAI":
                     models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
-                elif api == "deepseek":
+                elif api == "DeepSeek":
                     models = ["deepseek-chat", "deepseek-coder"]
 
             self._on_models_loaded(model_combo, api, models)
@@ -274,7 +298,7 @@ class AIDebateConfigPanel(QWidget):
         if not models:
             logger.error(f"模型列表为空，API: {api}")
             # 如果API调用失败，使用默认模型列表
-            if api == "ollama":
+            if api == "Ollama":
                 models = [
                     "qwen3:14b",
                     "llama2:7b",
@@ -282,10 +306,12 @@ class AIDebateConfigPanel(QWidget):
                     "gemma:2b",
                     "deepseek-v2:16b",
                 ]
-            elif api == "openai":
+            elif api == "OpenAI":
                 models = ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
-            elif api == "deepseek":
+            elif api == "DeepSeek":
                 models = ["deepseek-chat", "deepseek-coder"]
+            elif api == "Ollama Cloud":
+                models = ["llama3:70b", "llama3:8b", "gemma:7b", "mistral:7b"]
 
         # 添加模型列表
         if models:

@@ -19,6 +19,8 @@
   "setting_deepseek_key": "API金鑰:",
   "setting_ollama": "Ollama",
   "setting_ollama_url": "API基礎URL:",
+  "confirm_save": "確認儲存",
+  "confirm_save_msg": "確定要儲存設定嗎？",
   "setting_prompt": "提示詞設定",
   "setting_chat_prompt": "聊天系統提示詞",
   "setting_discussion_prompt": "討論系統提示詞",
@@ -223,7 +225,17 @@
   "save": "儲存",
   "start_discussion": "開始討論",
   "stop_discussion": "停止討論",
-  "setting_enter": "請輸入",
+  "setting_enter": "輸入",
   "setting_key": "金鑰",
-  "setting_base_url": "基礎URL"
+  "setting_base_url": "基礎URL",
+  "debate_judgment_completed": "辯論評判完成",
+  "setting_ollama_cloud": "Ollama Cloud",
+  "setting_ollama_cloud_key": "API金鑰:",
+  "setting_ollama_cloud_url": "API基礎URL:",
+  "update_available": "發現新版本",
+  "update_available_message": "發現新版本 {version}，是否現在下載？\n\n更新內容：\n{release_notes}",
+  "update_downloaded": "更新下載完成",
+  "update_downloaded_message": "更新包已下載完成，應用關閉後將自動安裝",
+  "pdf_exported": "聊天歷史已匯出到 {path}",
+  "pdf_export_failed": "PDF生成失敗"
 }

@@ -6,6 +6,18 @@
 
 import logging.config
 import os
+from .config_manager import config_manager
+
+# 获取日志配置
+log_level = config_manager.get('logging.level', 'INFO')
+log_file_path = config_manager.get('logging.file_path', 'logs/app.log')
+max_bytes = config_manager.get('logging.max_bytes', 10485760)  # 10MB
+backup_count = config_manager.get('logging.backup_count', 5)
+
+# 确保日志目录存在
+log_dir = os.path.dirname(log_file_path)
+if log_dir and not os.path.exists(log_dir):
+    os.makedirs(log_dir, exist_ok=True)
 
 # 详细的日志配置
 dict_config = {
@@ -24,24 +36,24 @@ dict_config = {
     "handlers": {
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": "ai_talking.log",
+            "filename": log_file_path,
             "encoding": "utf-8",
-            "maxBytes": 5 * 1024 * 1024,  # 5MB，减少单个日志文件大小
-            "backupCount": 3,  # 保留3个备份，减少总日志占用空间
+            "maxBytes": max_bytes,
+            "backupCount": backup_count,
             "formatter": "detailed",
-            "level": "INFO",  # 降低文件日志级别，减少日志量
+            "level": log_level,
         },
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "simple",
-            "level": "INFO",
+            "level": log_level,
         },
     },
     "root": {
         "handlers": ["file", "console"],
-        "level": "INFO",  # 降低根日志级别，减少日志量
+        "level": log_level,
     },
-    # 单独配置urllib3的日志级别，减少HTTP请求日志
+    # 单独配置各模块的日志级别，减少冗余日志
     "loggers": {
         "urllib3": {"level": "WARNING", "handlers": ["file"], "propagate": False},
         "requests": {"level": "WARNING", "handlers": ["file"], "propagate": False},
@@ -64,4 +76,4 @@ def get_logger(name=None):
     Returns:
         logging.Logger: 日志记录器实例
     """
-    return logging.getLogger(name)
+    return logging.getLogger(name)

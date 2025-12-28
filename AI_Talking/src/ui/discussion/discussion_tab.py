@@ -131,168 +131,283 @@ class DiscussionTabWidget(QWidget):
             )
             return
 
-        # 更新UI状态，防止重复点击
-        self.controls_panel.set_controls_enabled(False, True)
+        try:
+            # 确保之前的线程已停止
+            self.stop_chat()
 
-        # 更新状态信息
-        self.update_status("正在初始化讨论...")
+            # 更新UI状态，防止重复点击
+            self.controls_panel.set_controls_enabled(False, True)
 
-        # 清空讨论历史，准备新的讨论
-        self.chat_history_panel.clear_discussion_history()
+            # 更新状态信息
+            self.update_status("正在初始化讨论...")
 
-        # 显示讨论开始消息，告知用户讨论主题
-        self.chat_history_panel.append_to_discussion_history(
-            "系统", f"讨论主题: {topic}"
-        )
+            # 清空讨论历史，准备新的讨论
+            self.chat_history_panel.clear_discussion_history()
 
-        # 获取用户配置的讨论参数
-        api1, model1 = self.ai_config_panel.get_ai1_config()
-        api2, model2 = self.ai_config_panel.get_ai2_config()
-        rounds = self.config_panel.get_rounds()
-        temperature = self.config_panel.get_temperature()
-        time_limit = self.config_panel.get_time_limit()
+            # 显示讨论开始消息，告知用户讨论主题
+            self.chat_history_panel.append_to_discussion_history(
+                "系统", f"讨论主题: {topic}"
+            )
 
-        # 显示讨论配置，让用户了解当前讨论的设置
-        api3, model3 = self.ai_config_panel.get_ai3_config()
-        self.chat_history_panel.append_to_discussion_history(
-            "系统",
-            f"讨论配置: 学者AI1({api1}:{model1}) vs 学者AI2({api2}:{model2}) vs <br>专家AI3({api3}:{model3})，共{rounds}轮，温度{temperature}",
-        )
+            # 获取用户配置的讨论参数
+            api1, model1 = self.ai_config_panel.get_ai1_config()
+            api2, model2 = self.ai_config_panel.get_ai2_config()
+            rounds = self.config_panel.get_rounds()
+            temperature = self.config_panel.get_temperature()
+            time_limit = self.config_panel.get_time_limit()
 
-        # 创建DiscussionThread实例，传入所有必要参数
-        self.chat_thread = DiscussionThread(
-            topic=topic,
-            model1_name=model1,
-            model2_name=model2,
-            model1_api=api1,
-            model2_api=api2,
-            rounds=rounds,
-            time_limit=time_limit,
-            api_settings_widget=self.api_settings_widget,
-            temperature=temperature,
-            config_panel=self.config_panel,
-        )
+            # 显示讨论配置，让用户了解当前讨论的设置
+            api3, model3 = self.ai_config_panel.get_ai3_config()
+            self.chat_history_panel.append_to_discussion_history(
+                "系统",
+                f"讨论配置: 学者AI1({api1}:{model1}) vs 学者AI2({api2}:{model2})，<br>专家AI3({api3}:{model3})，共{rounds}轮，温度{temperature}",
+            )
 
-        # 连接线程信号到相应的处理方法
-        self.chat_thread.update_signal.connect(
-            self.chat_history_panel.append_to_discussion_history
-        )  # 接收讨论历史更新
-        self.chat_thread.status_signal.connect(self.update_status)  # 接收状态更新
-        self.chat_thread.finished_signal.connect(
-            self._on_discussion_finished
-        )  # 接收讨论结束信号
-        self.chat_thread.error_signal.connect(
-            self._on_discussion_error
-        )  # 接收讨论错误信号
-        self.chat_thread.stream_update_signal.connect(
-            self.chat_history_panel.on_stream_update
-        )  # 接收流式更新
+            # 创建DiscussionThread实例，传入所有必要参数
+            self.chat_thread = DiscussionThread(
+                topic=topic,
+                model1_name=model1,
+                model2_name=model2,
+                model1_api=api1,
+                model2_api=api2,
+                rounds=rounds,
+                time_limit=time_limit,
+                api_settings_widget=self.api_settings_widget,
+                temperature=temperature,
+                config_panel=self.config_panel,
+            )
 
-        # 启动讨论线程，开始双AI讨论
-        self.chat_thread.start()
-        logger.info(f"讨论已启动，主题: {topic}")
+            # 连接线程信号到相应的处理方法
+            self.chat_thread.update_signal.connect(
+                self.chat_history_panel.append_to_discussion_history
+            )  # 接收讨论历史更新
+            self.chat_thread.status_signal.connect(self.update_status)  # 接收状态更新
+            self.chat_thread.finished_signal.connect(
+                self._on_discussion_finished
+            )  # 接收讨论结束信号
+            self.chat_thread.error_signal.connect(
+                self._on_discussion_error
+            )  # 接收讨论错误信号
+            self.chat_thread.stream_update_signal.connect(
+                self.chat_history_panel.on_stream_update
+            )  # 接收流式更新
+
+            # 启动讨论线程，开始双AI讨论
+            self.chat_thread.start()
+            logger.info(f"讨论已启动，主题: {topic}")
+        except Exception as e:
+            logger.error(f"启动讨论失败: {str(e)}")
+            QMessageBox.critical(
+                self,
+                i18n.translate("error"),
+                i18n.translate("discussion_start_failed", error=str(e)),
+            )
+            self.controls_panel.set_controls_enabled(True, False)
+            self.update_status("讨论启动失败")
 
     def stop_chat(self):
         """
         停止双AI讨论，处理用户点击"停止讨论"按钮的事件
         """
-        # 检查讨论线程是否存在且正在运行
-        if self.chat_thread and self.chat_thread.isRunning():
-            # 调用线程的stop方法停止讨论
-            self.chat_thread.stop()
-            # 更新状态信息，告知用户正在停止讨论
-            self.update_status("正在停止讨论...")
+        try:
+            # 检查讨论线程是否存在且正在运行
+            if self.chat_thread:
+                if self.chat_thread.isRunning():
+                    # 调用线程的stop方法停止讨论
+                    self.chat_thread.stop()
+                    # 更新状态信息，告知用户正在停止讨论
+                    self.update_status("正在停止讨论...")
+                # 断开信号连接，避免内存泄漏
+                self.chat_thread.update_signal.disconnect()
+                self.chat_thread.status_signal.disconnect()
+                self.chat_thread.finished_signal.disconnect()
+                self.chat_thread.error_signal.disconnect()
+                self.chat_thread.stream_update_signal.disconnect()
+                # 清理线程资源
+                self.chat_thread = None
 
-        # 检查总结线程是否存在且正在运行
-        if self.summary_thread and self.summary_thread.isRunning():
-            # 调用线程的stop方法停止总结
-            self.summary_thread.stop()
+            # 检查总结线程是否存在且正在运行
+            if self.summary_thread:
+                if self.summary_thread.isRunning():
+                    # 调用线程的stop方法停止总结
+                    self.summary_thread.stop()
+                # 断开信号连接，避免内存泄漏
+                self.summary_thread.update_signal.disconnect()
+                self.summary_thread.status_signal.disconnect()
+                self.summary_thread.finished_signal.disconnect()
+                self.summary_thread.error_signal.disconnect()
+                self.summary_thread.stream_update_signal.disconnect()
+                # 清理线程资源
+                self.summary_thread = None
 
-        # 恢复UI状态，允许用户重新开始讨论
-        self.controls_panel.set_controls_enabled(True, False)
-        logger.info("讨论已停止")
+            # 恢复UI状态，允许用户重新开始讨论
+            self.controls_panel.set_controls_enabled(True, False)
+            self.update_status("讨论已停止")
+            logger.info("讨论已停止")
+        except Exception as e:
+            logger.error(f"停止讨论失败: {str(e)}")
 
     def _on_discussion_finished(self):
         """
         处理讨论结束信号，当讨论线程完成所有轮次讨论后调用
         """
-        # 更新状态信息，告知用户讨论已完成并开始生成总结
-        self.update_status("讨论完成，正在生成总结...")
-        # 更新UI状态
-        self.controls_panel.set_controls_enabled(False, False)
+        try:
+            # 更新状态信息，告知用户讨论已完成并开始生成总结
+            self.update_status("讨论完成，正在生成总结...")
+            # 更新UI状态
+            self.controls_panel.set_controls_enabled(False, False)
 
-        # 获取讨论历史记录，用于生成总结
-        discussion_history = self.chat_thread.get_discussion_history()
+            # 获取讨论历史记录，用于生成总结
+            discussion_history = []
+            if self.chat_thread:
+                discussion_history = self.chat_thread.get_discussion_history()
+                # 断开讨论线程信号连接
+                self.chat_thread.update_signal.disconnect()
+                self.chat_thread.status_signal.disconnect()
+                self.chat_thread.finished_signal.disconnect()
+                self.chat_thread.error_signal.disconnect()
+                self.chat_thread.stream_update_signal.disconnect()
 
-        # 构建讨论历史文本，过滤掉系统提示词
-        discussion_text = ""
-        for msg in discussion_history:
-            if msg["role"] == "system":
-                continue  # 跳过系统提示词
-            discussion_text += f"{msg['role']}: {msg['content']}\n\n"
+            # 构建讨论历史文本，过滤掉系统提示词
+            discussion_text = ""
+            for msg in discussion_history:
+                if msg["role"] == "system":
+                    continue  # 跳过系统提示词
+                discussion_text += f"{msg['role']}: {msg['content']}\n\n"
 
-        # 获取AI3的配置信息
-        api3, model3 = self.ai_config_panel.get_ai3_config()
+            # 获取AI3的配置信息
+            api3, model3 = self.ai_config_panel.get_ai3_config()
 
-        # 构建专家AI3的系统提示词
-        topic = self.config_panel.get_topic()
-        import os
+            # 构建专家AI3的系统提示词
+            topic = self.config_panel.get_topic()
+            import os
 
-        ai3_system_prompt = os.getenv("EXPERT_AI3_SYSTEM_PROMPT", "").format(
-            topic=topic
-        )
+            ai3_system_prompt = os.getenv("EXPERT_AI3_SYSTEM_PROMPT", "").format(
+                topic=topic
+            )
 
-        # 构建AI3的消息，包含系统提示词和讨论历史
-        ai3_messages = [
-            {"role": "system", "content": ai3_system_prompt},
-            {"role": "user", "content": discussion_text},
-        ]
+            # 构建AI3的消息，包含系统提示词和讨论历史
+            ai3_messages = [
+                {"role": "system", "content": ai3_system_prompt},
+                {"role": "user", "content": discussion_text},
+            ]
 
-        # 创建AI3总结线程
-        self.summary_thread = SummaryThread(
-            model_name=model3,
-            model_api=api3,
-            messages=ai3_messages,
-            api_settings_widget=self.api_settings_widget,
-            temperature=self.config_panel.get_temperature(),
-            config_panel=self.config_panel,
-        )
+            # 创建AI3总结线程
+            self.summary_thread = SummaryThread(
+                model_name=model3,
+                model_api=api3,
+                messages=ai3_messages,
+                api_settings_widget=self.api_settings_widget,
+                temperature=self.config_panel.get_temperature(),
+                config_panel=self.config_panel,
+            )
 
-        # 连接总结线程信号到相应的处理方法
-        self.summary_thread.update_signal.connect(
-            self.chat_history_panel.append_to_discussion_history
-        )  # 接收总结更新
-        self.summary_thread.status_signal.connect(self.update_status)  # 接收总结状态
-        self.summary_thread.finished_signal.connect(
-            self._on_summary_finished
-        )  # 接收总结完成信号
-        self.summary_thread.error_signal.connect(
-            self._on_summary_error
-        )  # 接收总结错误信号
-        self.summary_thread.stream_update_signal.connect(
-            self.chat_history_panel.on_stream_update
-        )  # 接收总结流式更新
+            # 连接总结线程信号到相应的处理方法
+            self.summary_thread.update_signal.connect(
+                self.chat_history_panel.append_to_discussion_history
+            )  # 接收总结更新
+            self.summary_thread.status_signal.connect(self.update_status)  # 接收总结状态
+            self.summary_thread.finished_signal.connect(
+                self._on_summary_finished
+            )  # 接收总结完成信号
+            self.summary_thread.error_signal.connect(
+                self._on_summary_error
+            )  # 接收总结错误信号
+            self.summary_thread.stream_update_signal.connect(
+                self.chat_history_panel.on_stream_update
+            )  # 接收总结流式更新
 
-        # 启动总结线程，开始生成讨论总结
-        self.summary_thread.start()
-        logger.info("讨论已完成，开始生成总结报告")
+            # 清理讨论线程资源
+            if hasattr(self, "chat_thread") and self.chat_thread:
+                self.chat_thread = None
+
+            # 启动总结线程，开始生成讨论总结
+            self.summary_thread.start()
+            logger.info("讨论已完成，开始生成总结报告")
+        except Exception as e:
+            logger.error(f"处理讨论结束失败: {str(e)}")
+            # 清理资源
+            self.stop_chat()
+            self.update_status("处理讨论结束失败")
 
     def _on_summary_finished(self):
         """
         处理总结完成信号，当AI3完成总结后调用
         """
-
-        # 更新状态信息
-        self.update_status("总结完成")
-        # 恢复UI状态
-        self.controls_panel.set_controls_enabled(True, False)
-        # 清理总结线程资源
-        self.summary_thread = None
-        # 清理讨论线程资源（延迟清理，确保总结已生成）
-        if hasattr(self, "chat_thread") and self.chat_thread:
-            self.chat_thread = None
-        logger.info("总结已完成，所有线程资源已清理")
-
+        try:
+            # 更新状态信息
+            self.update_status("总结完成")
+            # 恢复UI状态
+            self.controls_panel.set_controls_enabled(True, False)
+            
+            # 断开总结线程信号连接
+            if self.summary_thread:
+                self.summary_thread.update_signal.disconnect()
+                self.summary_thread.status_signal.disconnect()
+                self.summary_thread.finished_signal.disconnect()
+                self.summary_thread.error_signal.disconnect()
+                self.summary_thread.stream_update_signal.disconnect()
+            
+            # 清理总结线程资源
+            self.summary_thread = None
+            
+            # 清理讨论线程资源（如果还存在）
+            if hasattr(self, "chat_thread") and self.chat_thread:
+                try:
+                    self.chat_thread.update_signal.disconnect()
+                    self.chat_thread.status_signal.disconnect()
+                    self.chat_thread.finished_signal.disconnect()
+                    self.chat_thread.error_signal.disconnect()
+                    self.chat_thread.stream_update_signal.disconnect()
+                except:
+                    pass
+                self.chat_thread = None
+            
+            # 自动保存讨论历史到历史管理器
+            try:
+                from utils.chat_history_manager import ChatHistoryManager
+                history_manager = ChatHistoryManager()
+                
+                # 获取当前时间
+                from datetime import datetime
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                # 获取当前HTML内容
+                def get_html_finished(html):
+                    # 获取AI配置
+                    api1, model1 = self.ai_config_panel.get_ai1_config()
+                    api2, model2 = self.ai_config_panel.get_ai2_config()
+                    api3, model3 = self.ai_config_panel.get_ai3_config()
+                    
+                    # 获取讨论主题
+                    topic = self.config_panel.get_topic()
+                    
+                    # 保存历史记录
+                    history_manager.add_history(
+                        func_type="讨论",
+                        topic=topic,
+                        model1_name=model1,
+                        model2_name=model2,
+                        api1=api1,
+                        api2=api2,
+                        rounds=self.config_panel.get_rounds(),
+                        chat_content=html,
+                        start_time=current_time,
+                        end_time=current_time,
+                    )
+                    logger.info("讨论历史已自动保存到历史管理器")
+                
+                self.chat_history_panel.get_html_content(get_html_finished)
+            except Exception as e:
+                logger.error(f"自动保存讨论历史到历史管理器失败: {str(e)}")
+            
+            logger.info("总结已完成，所有线程资源已清理")
+        except Exception as e:
+            logger.error(f"处理总结完成失败: {str(e)}")
+            # 确保UI状态恢复
+            self.controls_panel.set_controls_enabled(True, False)
+            self.update_status("处理总结完成失败")
+            
     def _on_summary_error(self, error):
         """
         处理总结错误信号，当AI3总结过程中发生错误时调用
@@ -300,18 +415,48 @@ class DiscussionTabWidget(QWidget):
         Args:
             error: 错误信息
         """
-        # 记录错误日志
-        logger.error(f"总结错误: {error}")
-        # 显示错误信息到讨论历史
-        self.chat_history_panel.append_to_discussion_history(
-            "系统", f"总结错误: {error}"
-        )
-        # 更新状态信息
-        self.update_status("总结失败")
-        # 恢复UI状态
-        self.controls_panel.set_controls_enabled(True, False)
-        # 清理总结线程资源
-        self.summary_thread = None
+        try:
+            # 记录错误日志
+            logger.error(f"总结错误: {error}")
+            # 显示错误信息到讨论历史
+            self.chat_history_panel.append_to_discussion_history(
+                "系统", f"总结错误: {error}"
+            )
+            # 更新状态信息
+            self.update_status("总结失败")
+            
+            # 断开总结线程信号连接
+            if self.summary_thread:
+                try:
+                    self.summary_thread.update_signal.disconnect()
+                    self.summary_thread.status_signal.disconnect()
+                    self.summary_thread.finished_signal.disconnect()
+                    self.summary_thread.error_signal.disconnect()
+                    self.summary_thread.stream_update_signal.disconnect()
+                except:
+                    pass
+            
+            # 恢复UI状态
+            self.controls_panel.set_controls_enabled(True, False)
+            # 清理总结线程资源
+            self.summary_thread = None
+            
+            # 清理讨论线程资源（如果还存在）
+            if hasattr(self, "chat_thread") and self.chat_thread:
+                try:
+                    self.chat_thread.update_signal.disconnect()
+                    self.chat_thread.status_signal.disconnect()
+                    self.chat_thread.finished_signal.disconnect()
+                    self.chat_thread.error_signal.disconnect()
+                    self.chat_thread.stream_update_signal.disconnect()
+                except:
+                    pass
+                self.chat_thread = None
+        except Exception as e:
+            logger.error(f"处理总结错误失败: {str(e)}")
+            # 确保UI状态恢复
+            self.controls_panel.set_controls_enabled(True, False)
+            self.update_status("处理总结错误失败")
 
     def _on_discussion_error(self, error):
         """
@@ -320,18 +465,36 @@ class DiscussionTabWidget(QWidget):
         Args:
             error: 错误信息
         """
-        # 记录错误日志
-        logger.error(f"讨论错误: {error}")
-        # 显示错误信息到讨论历史
-        self.chat_history_panel.append_to_discussion_history(
-            "系统", f"讨论错误: {error}"
-        )
-        # 更新状态信息
-        self.update_status("讨论失败")
-        # 恢复UI状态
-        self.controls_panel.set_controls_enabled(True, False)
-        # 清理讨论线程资源
-        self.chat_thread = None
+        try:
+            # 记录错误日志
+            logger.error(f"讨论错误: {error}")
+            # 显示错误信息到讨论历史
+            self.chat_history_panel.append_to_discussion_history(
+                "系统", f"讨论错误: {error}"
+            )
+            # 更新状态信息
+            self.update_status("讨论失败")
+            
+            # 断开讨论线程信号连接
+            if self.chat_thread:
+                try:
+                    self.chat_thread.update_signal.disconnect()
+                    self.chat_thread.status_signal.disconnect()
+                    self.chat_thread.finished_signal.disconnect()
+                    self.chat_thread.error_signal.disconnect()
+                    self.chat_thread.stream_update_signal.disconnect()
+                except:
+                    pass
+            
+            # 恢复UI状态
+            self.controls_panel.set_controls_enabled(True, False)
+            # 清理讨论线程资源
+            self.chat_thread = None
+        except Exception as e:
+            logger.error(f"处理讨论错误失败: {str(e)}")
+            # 确保UI状态恢复
+            self.controls_panel.set_controls_enabled(True, False)
+            self.update_status("处理讨论错误失败")
 
     def update_status(self, status):
         """

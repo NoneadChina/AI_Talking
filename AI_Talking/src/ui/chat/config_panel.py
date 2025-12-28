@@ -78,8 +78,8 @@ class ConfigPanel(QWidget):
             QLabel(i18n.translate("chat_model_provider")), alignment=Qt.AlignVCenter
         )
         self.chat_api_combo = QComboBox()
-        self.chat_api_combo.addItems(["ollama", "openai", "deepseek"])
-        self.chat_api_combo.setCurrentText("ollama")  # 默认选择ollama API
+        self.chat_api_combo.addItems(["Ollama", "OpenAI", "DeepSeek", "Ollama Cloud"])
+        self.chat_api_combo.setCurrentText("Ollama")  # 默认选择Ollama API
         self.chat_api_combo.setStyleSheet(
             "font-size: 9pt; padding: 4px; border: 1px solid #ddd; border-radius: 6px;"
         )

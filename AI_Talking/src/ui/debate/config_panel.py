@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
     QSpinBox,
     QDoubleSpinBox,
     QGroupBox,
+    QTextEdit,
 )
 from ui.ui_utils import create_group_box, get_default_styles
 from utils.logger_config import get_logger
@@ -62,16 +63,45 @@ class DebateConfigPanel(QWidget):
         config_layout.setSpacing(12)
 
         # 主题输入
-        topic_layout = QHBoxLayout()
+        topic_layout = QVBoxLayout()
         topic_layout.setSpacing(8)
         self.topic_label = QLabel(i18n.translate("debate_topic"))
         topic_layout.addWidget(self.topic_label, alignment=Qt.AlignVCenter)
 
-        self.debate_topic_edit = QLineEdit()
+        # 使用QTextEdit实现多行输入，完全模仿讨论标签页的设计
+        self.debate_topic_edit = QTextEdit()
         self.debate_topic_edit.setPlaceholderText(
             i18n.translate("debate_topic_placeholder")
         )
-        self.debate_topic_edit.setStyleSheet(self.styles["line_edit"])
+        
+        # 设置样式，与讨论标签页的主题输入框保持一致
+        self.debate_topic_edit.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 10pt;
+                background-color: #ffffff;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                transition: all 0.2s ease;
+            }
+            QTextEdit:focus {
+                border-color: #4caf50;
+                box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+                outline: none;
+            }
+        """)
+        
+        # 设置最大高度（约5行）
+        self.debate_topic_edit.setMaximumHeight(100)
+        # 设置初始高度（约1行）
+        self.debate_topic_edit.setFixedHeight(30)
+        # 设置垂直滚动条策略
+        self.debate_topic_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # 连接文本变化信号，自动调整高度
+        self.debate_topic_edit.textChanged.connect(self._adjust_topic_height)
+        
         topic_layout.addWidget(self.debate_topic_edit)
         config_layout.addLayout(topic_layout)
 
@@ -187,13 +217,41 @@ class DebateConfigPanel(QWidget):
         self.temperature_label.setText(i18n.translate("debate_temperature"))
         self.temperature_range_label.setText(i18n.translate("debate_temperature_range"))
 
+    def _adjust_topic_height(self) -> None:
+        """
+        自动调整主题输入框的高度，默认显示1行，最多显示5行
+        完全模仿讨论标签页的设计
+        """
+        # 禁用固定高度限制，允许自动调整
+        self.debate_topic_edit.setFixedHeight(0)
+        
+        # 获取内容高度
+        content_height = self.debate_topic_edit.document().size().height()
+        
+        # 设置固定高度范围
+        max_height = 100  # 最大高度（约5行）
+        min_height = 30  # 最小高度（约1行）
+        
+        # 计算合适的高度，添加20px的内边距
+        new_height = int(content_height + 20)
+        
+        # 限制在最小和最大高度之间
+        if new_height < min_height:
+            new_height = min_height
+        elif new_height > max_height:
+            new_height = max_height
+        
+        # 使用setFixedHeight来设置精确的高度
+        self.debate_topic_edit.setFixedHeight(new_height)
+
     def get_topic(self) -> str:
         """获取辩论主题
 
         Returns:
             str: 辩论主题
         """
-        return self.debate_topic_edit.text().strip()
+        # 获取所有文本内容，包括换行符，确保控件内所有字符都属于辩论主题
+        return self.debate_topic_edit.toPlainText().strip()
 
     def get_rounds(self) -> int:
         """获取辩论轮数
@@ -218,3 +276,13 @@ class DebateConfigPanel(QWidget):
             float: 温度值
         """
         return self.debate_temp_spin.value()
+
+    def set_topic(self, topic: str) -> None:
+        """设置辩论主题
+
+        Args:
+            topic: 辩论主题
+        """
+        self.debate_topic_edit.setPlainText(topic)
+        # 调整高度以适应内容
+        self._adjust_topic_height()

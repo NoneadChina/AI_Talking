@@ -42,6 +42,7 @@ from utils.logger_config import get_logger
 from utils.resource_manager import ResourceManager
 from utils.update_service import UpdateManager
 from utils.i18n_manager import i18n
+from utils.config_manager import config_manager  # 导入配置管理器
 
 # UI组件导入
 from ui.about_tab import AboutTabWidget
@@ -133,8 +134,12 @@ class AI_Talking_MainWindow(QMainWindow):
         if icon:
             self.setWindowIcon(icon)
 
-        # 设置窗口位置和大小
-        self.setGeometry(100, 100, 900, 1300)  # 增加了300px高度
+        # 从配置中读取窗口大小和位置
+        x = config_manager.get('app.window.x', 100)
+        y = config_manager.get('app.window.y', 100)
+        width = config_manager.get('app.window.width', 900)
+        height = config_manager.get('app.window.height', 1000)
+        self.setGeometry(x, y, width, height)
 
     def _create_main_layout(self):
         """

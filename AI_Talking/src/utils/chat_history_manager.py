@@ -114,8 +114,9 @@ class ChatHistoryManager:
         self.history_file: str = os.path.join(app_data_dir, history_file)
         self.max_history_size: int = 1000  # 限制最大历史记录数量，防止内存占用过高
 
-        # 初始化空的聊天历史列表，不自动加载
+        # 初始化聊天历史列表，自动加载之前保存的历史记录
         self.chat_histories: List[Dict] = []
+        self.load_history()
 
     def async_load_history(
         self,
@@ -304,6 +305,7 @@ class ChatHistoryManager:
         """
         添加聊天历史记录
         和同一个模型聊天，只记录一条历史，除非更换了模型
+        对于讨论、辩论、批量功能，每次都添加新记录
 
         Args:
             func_type (str): 功能类型，可选值："聊天"、"讨论"、"辩论"、"批量"
@@ -323,14 +325,12 @@ class ChatHistoryManager:
         # 生成格式化的主题名称
         formatted_topic = self.generate_formatted_topic(func_type, topic)
 
-        # 检查是否存在相同模型组合的历史记录
-        for i, existing_history in enumerate(self.chat_histories):
-            # 对于单聊模式，只比较model1和api1
-            if model2_name is None or model2_name == "":
-                if (
-                    existing_history["model1"] == model1_name
-                    and existing_history["api1"] == api1
-                ):
+        # 对于聊天功能，同一个模型只保存一条历史记录，更新现有记录
+        if func_type == "聊天":
+            # 检查是否存在相同模型组合的历史记录
+            for i, existing_history in enumerate(self.chat_histories):
+                # 对于单聊模式，只比较model1和api1
+                if existing_history["model1"] == model1_name and existing_history["api1"] == api1:
                     # 更新现有记录
                     self.chat_histories[i] = {
                         "topic": formatted_topic,
@@ -340,38 +340,13 @@ class ChatHistoryManager:
                         "api2": api2,
                         "rounds": rounds,
                         "chat_content": chat_content,
-                        "start_time": start_time,
-                        "end_time": end_time,
+                        "start_time": existing_history["start_time"],  # 保留原始开始时间
+                        "end_time": end_time,  # 更新结束时间
                     }
                     return self.save_history()
-            else:
-                # 对于讨论/辩论模式，比较两个模型的组合
-                if (
-                    existing_history["model1"] == model1_name
-                    and existing_history["api1"] == api1
-                    and existing_history["model2"] == model2_name
-                    and existing_history["api2"] == api2
-                ) or (
-                    existing_history["model1"] == model2_name
-                    and existing_history["api1"] == api2
-                    and existing_history["model2"] == model1_name
-                    and existing_history["api2"] == api1
-                ):
-                    # 更新现有记录
-                    self.chat_histories[i] = {
-                        "topic": formatted_topic,
-                        "model1": model1_name,
-                        "model2": model2_name,
-                        "api1": api1,
-                        "api2": api2,
-                        "rounds": rounds,
-                        "chat_content": chat_content,
-                        "start_time": start_time,
-                        "end_time": end_time,
-                    }
-                    return self.save_history()
-
-        # 如果没有相同模型组合的记录，添加新记录
+        
+        # 对于讨论、辩论、批量功能，每次都添加新记录
+        # 或者对于新的聊天模型，添加新记录
         history = {
             "topic": formatted_topic,
             "model1": model1_name,
@@ -439,7 +414,8 @@ class ChatHistoryManager:
         """
         try:
             with open(export_path, "w", encoding="utf-8") as f:
-                json.dump(self.chat_histories, f, ensure_ascii=False, indent=2)
+                # 添加default=str参数，将不可序列化的对象转换为字符串
+                json.dump(self.chat_histories, f, ensure_ascii=False, indent=2, default=str)
             logger.info(f"已将聊天历史导出到 {export_path}")
             return True
         except Exception as e:
