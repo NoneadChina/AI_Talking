@@ -5,6 +5,7 @@ AI服务单元测试
 
 import unittest
 import time
+import requests
 from unittest.mock import MagicMock, patch, call
 from src.utils.ai_service import (
     retry_with_backoff,
@@ -32,8 +33,8 @@ class TestRetryWithBackoff(unittest.TestCase):
         """
         测试重试成功的情况
         """
-        # 创建一个会失败两次然后成功的函数
-        mock_func = MagicMock(side_effect=[Exception("第一次失败"), Exception("第二次失败"), "成功结果"])
+        # 创建一个会失败两次然后成功的函数，使用requests.Timeout异常，这会被重试
+        mock_func = MagicMock(side_effect=[requests.Timeout("第一次失败"), requests.Timeout("第二次失败"), "成功结果"])
         
         # 应用装饰器
         decorated_func = retry_with_backoff(max_retries=3, base_delay=0.1)(mock_func)
@@ -49,14 +50,14 @@ class TestRetryWithBackoff(unittest.TestCase):
         """
         测试达到最大重试次数仍失败的情况
         """
-        # 创建一个总是失败的函数
-        mock_func = MagicMock(side_effect=Exception("总是失败"))
+        # 创建一个总是失败的函数，使用requests.ConnectionError异常，这会被重试
+        mock_func = MagicMock(side_effect=requests.ConnectionError("总是失败"))
         
         # 应用装饰器
         decorated_func = retry_with_backoff(max_retries=2, base_delay=0.1)(mock_func)
         
         # 验证是否抛出异常
-        with self.assertRaises(Exception):
+        with self.assertRaises(requests.ConnectionError):
             decorated_func()
         
         # 验证调用次数

@@ -38,10 +38,16 @@ class I18nManager(QObject):
             "ru": "Русский",
         }
 
-        # 翻译资源目录
-        self.translations_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "i8n"
-        )
+        # 翻译资源目录 - 处理PyInstaller打包后的路径
+        import sys
+        if hasattr(sys, '_MEIPASS'):
+            # 打包后的环境
+            self.translations_dir = os.path.join(sys._MEIPASS, "src", "i8n")
+        else:
+            # 开发环境
+            self.translations_dir = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "i8n"
+            )
 
         # 翻译资源
         self.translations: Dict[str, Dict[str, str]] = {}

@@ -6,11 +6,18 @@
 
 import logging.config
 import os
-from .config_manager import config_manager
+from .config_manager import config_manager, get_app_data_dir
 
 # 获取日志配置
 log_level = config_manager.get('logging.level', 'INFO')
-log_file_path = config_manager.get('logging.file_path', 'logs/app.log')
+# 默认日志文件路径改为用户目录下的logs子目录
+default_log_path = os.path.join(get_app_data_dir(), 'logs/app.log')
+log_file_path = config_manager.get('logging.file_path', default_log_path)
+
+# 如果log_file_path是相对路径，则将其转换为绝对路径，存储在用户目录下
+if not os.path.isabs(log_file_path):
+    log_file_path = os.path.join(get_app_data_dir(), log_file_path)
+
 max_bytes = config_manager.get('logging.max_bytes', 10485760)  # 10MB
 backup_count = config_manager.get('logging.backup_count', 5)
 
@@ -18,6 +25,8 @@ backup_count = config_manager.get('logging.backup_count', 5)
 log_dir = os.path.dirname(log_file_path)
 if log_dir and not os.path.exists(log_dir):
     os.makedirs(log_dir, exist_ok=True)
+    # 使用print代替logger，因为logger还没有配置
+    print(f"已创建日志目录: {log_dir}")
 
 # 详细的日志配置
 dict_config = {

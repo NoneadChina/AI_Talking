@@ -11,6 +11,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from .logger_config import get_logger
+from .config_manager import get_app_data_dir
 
 logger = get_logger(__name__)
 
@@ -111,16 +112,8 @@ class SecureStorage:
 # 实际使用时应从安全的位置获取密码
 # 这里使用一个默认密码，实际部署时应修改为更安全的方式
 _secure_storage = None
-# 确定应用程序的安装目录
-if getattr(sys, "frozen", False):
-    # 打包后的可执行文件所在目录
-    current_dir = os.path.dirname(sys.executable)
-else:
-    # 开发环境下的当前文件所在目录
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    current_dir = os.path.dirname(current_dir)  # 向上一级目录
-    current_dir = os.path.dirname(current_dir)  # 再向上一级目录
-_salt_file_path = os.path.join(current_dir, "salt.txt")
+# 将salt.txt文件存储在用户目录下
+_salt_file_path = os.path.join(get_app_data_dir(), "salt.txt")
 
 
 def init_secure_storage(password: str = "ai_talking_default_password"):

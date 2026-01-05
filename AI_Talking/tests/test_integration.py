@@ -132,11 +132,12 @@ class TestAIWorkflowIntegration(unittest.TestCase):
         测试重试装饰器集成
         """
         from src.utils.ai_service import retry_with_backoff
+        import requests
         
-        # 创建一个会失败两次然后成功的函数
+        # 创建一个会失败两次然后成功的函数，使用requests.Timeout异常，这会被重试
         mock_func = MagicMock(side_effect=[
-            Exception("第一次失败"), 
-            Exception("第二次失败"), 
+            requests.Timeout("第一次失败"), 
+            requests.Timeout("第二次失败"), 
             "成功结果"
         ])
         

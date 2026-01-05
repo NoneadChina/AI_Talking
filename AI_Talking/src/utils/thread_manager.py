@@ -7,6 +7,8 @@ import time
 import threading
 import requests
 from .logger_config import get_logger
+from .config_manager import config_manager
+from .i18n_manager import i18n
 from PyQt5.QtCore import QThread, pyqtSignal
 
 # 获取日志记录器
@@ -59,14 +61,16 @@ class BaseAITaskThread(QThread):
         """
         return self._stop_event.is_set()
 
-    def _create_ai_service(self, api_type):
+    def _create_ai_service(self, api_type, model_name=None):
         """
         创建AI服务实例
 
         该方法根据API类型创建对应的AI服务实例，支持多种AI服务提供商
+        严格按照用户选择的API类型来决定使用哪个服务，不受模型名称影响
 
         Args:
             api_type: API类型，可选值："ollama", "openai", "deepseek", "ollama_cloud"
+            model_name: 模型名称，可选，仅用于日志记录，不影响服务选择
 
         Returns:
             AIServiceInterface: AI服务实例，实现了统一的AI服务接口
@@ -76,28 +80,53 @@ class BaseAITaskThread(QThread):
         """
         from src.utils.ai_service import AIServiceFactory
 
-        # 根据API类型创建对应的AI服务实例
+        # 检查API设置组件是否可用
+        if not self.api_settings_widget:
+            raise ValueError("API 设置组件未初始化")
+
+        # 严格按照用户选择的API类型来决定使用哪个服务
+        # 不管模型名称是什么，只要用户选择了Ollama，就使用Ollama服务
+        # 不管模型名称是什么，只要用户选择了Ollama Cloud，就使用Ollama Cloud服务
         if api_type == "ollama" or api_type == "Ollama":
-            return AIServiceFactory.create_ai_service(
-                "ollama", base_url=self.api_settings_widget.get_ollama_base_url()
-            )
+            try:
+                base_url = self.api_settings_widget.get_ollama_base_url()
+                logger.info(f"使用Ollama服务，模型: {model_name}，基础URL: {base_url}")
+                return AIServiceFactory.create_ai_service(
+                    "ollama", base_url=base_url
+                )
+            except AttributeError as e:
+                raise ValueError(f"获取Ollama基础URL失败: {str(e)}")
         elif api_type == "openai" or api_type == "OpenAI":
-            return AIServiceFactory.create_ai_service(
-                "openai", api_key=self.api_settings_widget.get_openai_api_key()
-            )
+            try:
+                api_key = self.api_settings_widget.get_openai_api_key()
+                return AIServiceFactory.create_ai_service(
+                    "openai", api_key=api_key
+                )
+            except AttributeError as e:
+                raise ValueError(f"获取OpenAI API密钥失败: {str(e)}")
         elif api_type == "deepseek" or api_type == "DeepSeek":
-            return AIServiceFactory.create_ai_service(
-                "deepseek", api_key=self.api_settings_widget.get_deepseek_api_key()
-            )
+            try:
+                api_key = self.api_settings_widget.get_deepseek_api_key()
+                return AIServiceFactory.create_ai_service(
+                    "deepseek", api_key=api_key
+                )
+            except AttributeError as e:
+                raise ValueError(f"获取DeepSeek API密钥失败: {str(e)}")
         elif api_type == "ollama_cloud" or api_type == "Ollama Cloud":
-            api_key = self.api_settings_widget.get_ollama_cloud_api_key()
-            if not api_key:
-                raise ValueError("Ollama Cloud API 密钥未设置")
-            return AIServiceFactory.create_ai_service(
-                "ollama_cloud", 
-                api_key=api_key,
-                base_url=self.api_settings_widget.get_ollama_cloud_base_url()
-            )
+            try:
+                api_key = self.api_settings_widget.get_ollama_cloud_api_key()
+                # 检查API密钥是否已设置
+                if not api_key:
+                    logger.warning("Ollama Cloud API 密钥未设置，尝试使用空密钥调用")
+                base_url = self.api_settings_widget.get_ollama_cloud_base_url()
+                logger.info(f"使用Ollama Cloud服务，模型: {model_name}，基础URL: {base_url}")
+                return AIServiceFactory.create_ai_service(
+                    "ollama_cloud", 
+                    api_key=api_key,
+                    base_url=base_url
+                )
+            except AttributeError as e:
+                raise ValueError(f"获取Ollama Cloud设置失败: {str(e)}")
         else:
             raise ValueError(f"不支持的API类型: {api_type}")
 
@@ -253,7 +282,7 @@ class ChatThread(BaseAITaskThread):
             # 根据API类型创建相应的AI服务实例
             ai_service = None
             try:
-                ai_service = self._create_ai_service(self.api)
+                ai_service = self._create_ai_service(self.api, self.model_name)
             except ValueError as e:
                 # 处理不支持的API类型错误
                 error_msg = f"不支持的API类型: {self.api}"
@@ -291,7 +320,7 @@ class ChatThread(BaseAITaskThread):
                 self.update_signal.emit("AI", full_response)
 
             # 发送完成状态信号
-            self.status_signal.emit("AI回复完成")
+            self.status_signal.emit(i18n.translate("ai_reply_completed"))
 
         except Exception as e:
             # 统一处理所有异常
@@ -337,6 +366,7 @@ class SummaryThread(BaseAITaskThread):
         self.model_api = model_api
         self.messages = messages
         self.config_panel = config_panel
+        self.full_response = ""  # 存储完整的总结结果
 
     def _cleanup_resources(self):
         """
@@ -345,6 +375,17 @@ class SummaryThread(BaseAITaskThread):
         super()._cleanup_resources()
         # 清理消息列表
         self.messages = []
+        # 清理总结结果
+        self.full_response = ""
+    
+    def get_summary(self):
+        """
+        获取总结结果
+
+        Returns:
+            str: 完整的总结内容
+        """
+        return self.full_response
 
     def run(self):
         """
@@ -412,26 +453,28 @@ class SummaryThread(BaseAITaskThread):
                 temperature = self.config_panel.get_temperature()
 
             # 使用统一的AI服务接口发送请求
-            ai_service = self._create_ai_service(self.model_api)
+            ai_service = self._create_ai_service(self.model_api, self.model_name)
             response_generator = ai_service.chat_completion(
                 self.messages,
                 self.model_name,
                 temperature=temperature,
                 stream=True,  # 总结始终使用流式响应
+                yield_full_response=False  # 使用增量内容
             )
 
             # 处理流式响应，逐块更新总结内容
             for chunk in response_generator:
                 if self.is_stopped():
                     break  # 检查线程是否被停止
-                full_response = chunk  # 更新完整响应
+                full_response += chunk  # 累加增量内容
+                self.full_response = full_response  # 保存到实例变量
                 # 发送流式更新信号
                 self.stream_update_signal.emit(
                     sender_name, full_response, self.model_name
                 )
 
             # 发送总结完成的状态信号和结束信号
-            self.status_signal.emit("总结完成")
+            self.status_signal.emit(i18n.translate("summary_completed"))
             self.finished_signal.emit()
 
         except Exception as e:
@@ -505,6 +548,24 @@ class DebateThread(BaseAITaskThread):
             list: 辩论历史列表
         """
         return self.debate_history_messages
+        
+    def _cleanup_debate_history(self):
+        """
+        清理辩论历史，只保留最新的消息
+        
+        保留系统提示词和最新的消息，删除中间的旧消息，防止内存溢出
+        """
+        # 设置最大辩论历史长度
+        max_history_length = 50
+        
+        if len(self.debate_history_messages) > max_history_length:
+            # 保留系统提示词
+            system_prompts = [msg for msg in self.debate_history_messages if msg['role'] == 'system']
+            # 保留最新的消息
+            latest_messages = self.debate_history_messages[-max_history_length+len(system_prompts):]
+            # 合并系统提示词和最新消息
+            self.debate_history_messages = system_prompts + latest_messages
+            logger.info(f"辩论历史已清理，当前长度: {len(self.debate_history_messages)}")
 
     def _cleanup_resources(self):
         """
@@ -551,6 +612,10 @@ class DebateThread(BaseAITaskThread):
         # 构建辩论消息
         message = f"辩论主题: {topic}\n"
         if previous_response:
+            # 限制对方观点的长度，防止消息过长导致AI模型无法处理
+            max_previous_length = 2000
+            if len(previous_response) > max_previous_length:
+                previous_response = previous_response[:max_previous_length] + "...（内容过长，已截断）"
             message += f"对方观点: {previous_response}\n"
         message += "请根据你的立场进行辩论，逻辑清晰，论点明确。"
 
@@ -562,19 +627,20 @@ class DebateThread(BaseAITaskThread):
 
         # 使用统一的AI服务接口发送请求
         try:
-            ai_service = self._create_ai_service(api)
+            ai_service = self._create_ai_service(api, model_name)
             full_response = ""
 
             if stream:
-                # 处理流式响应
+                # 处理流式响应，使用yield_full_response=False只获取增量内容
                 response_generator = ai_service.chat_completion(
-                    messages, model_name, temperature=temperature, stream=True
+                    messages, model_name, temperature=temperature, 
+                    stream=True, yield_full_response=False
                 )
 
                 for chunk in response_generator:
                     if self.is_stopped():
                         break
-                    full_response = chunk
+                    full_response += chunk
                     # 发送流式更新信号
                     self.stream_update_signal.emit(
                         f"{sender_prefix}{model_name}",
@@ -615,12 +681,10 @@ class DebateThread(BaseAITaskThread):
         self.start_time = time.time()  # 记录辩论开始时间
 
         try:
-            # 获取辩论系统提示词（从环境变量读取，确保使用最新的设置）
-            import os
-
-            debate_common_prompt = os.getenv("DEBATE_SYSTEM_PROMPT", "").strip()
-            debate_ai1_prompt = os.getenv("DEBATE_AI1_SYSTEM_PROMPT", "").strip()
-            debate_ai2_prompt = os.getenv("DEBATE_AI2_SYSTEM_PROMPT", "").strip()
+            # 获取辩论系统提示词（从配置文件读取，确保使用最新的设置）
+            debate_common_prompt = config_manager.get("debate.system_prompt", "").strip()
+            debate_ai1_prompt = config_manager.get("debate.ai1_prompt", "").strip()
+            debate_ai2_prompt = config_manager.get("debate.ai2_prompt", "").strip()
 
             # 初始化辩论历史
             self.debate_history_messages = []
@@ -635,12 +699,12 @@ class DebateThread(BaseAITaskThread):
                     self.time_limit > 0
                     and (time.time() - self.start_time) > self.time_limit
                 ):
-                    self.status_signal.emit("辩论已超时")
+                    self.status_signal.emit(i18n.translate("debate_timed_out"))
                     break
 
                 # 将主题添加到辩论历史
                 self.debate_history_messages.append(
-                    {"role": "system", "content": f"辩论主题: {topic}"}
+                    {"role": "system", "content": f"{i18n.translate('debate_topic')}: {topic}"}
                 )
 
                 # 进行辩论轮次
@@ -649,14 +713,14 @@ class DebateThread(BaseAITaskThread):
                         break  # 检查线程是否被停止
 
                     # 发送轮次信息
-                    self.update_signal.emit("系统", f"=== 第 {round_num} 轮辩论 ===")
+                    self.update_signal.emit("系统", f"=== {i18n.translate('debate_round', round_num=round_num)} ===")
                     # 将轮次信息添加到辩论历史
                     self.debate_history_messages.append(
-                        {"role": "system", "content": f"第 {round_num} 轮辩论"}
+                        {"role": "system", "content": f"{i18n.translate('debate_round', round_num=round_num)}"}
                     )
 
                     # 正方发言阶段
-                    self.status_signal.emit(f"正方{self.model1_name}正在发言...")
+                    self.status_signal.emit(i18n.translate("pro_speaking", model_name=self.model1_name))
                     model1_response = self._send_debate_message(
                         self.model1_name,
                         self.model1_api,
@@ -679,8 +743,11 @@ class DebateThread(BaseAITaskThread):
                     if self.is_stopped():
                         break  # 检查线程是否被停止
 
+                    # 清理辩论历史，防止内存溢出
+                    self._cleanup_debate_history()
+
                     # 反方发言阶段
-                    self.status_signal.emit(f"反方{self.model2_name}正在发言...")
+                    self.status_signal.emit(i18n.translate("con_speaking", model_name=self.model2_name))
                     model2_response = self._send_debate_message(
                         self.model2_name,
                         self.model2_api,
@@ -705,12 +772,12 @@ class DebateThread(BaseAITaskThread):
 
             # 计算辩论总耗时
             total_time = time.time() - self.start_time
-            self.status_signal.emit(f"辩论结束，总耗时: {total_time:.2f} 秒")
+            self.status_signal.emit(i18n.translate('debate_ended_with_time', total_time=f'{total_time:.2f}'))
 
             # 发送辩论结束消息
-            self.update_signal.emit("系统", "=== 辩论结束 ===")
+            self.update_signal.emit("系统", f"=== {i18n.translate('debate_ended')} ===")
             self.debate_history_messages.append(
-                {"role": "system", "content": "辩论结束"}
+                {"role": "system", "content": i18n.translate('debate_ended')}
             )
 
             # 发送辩论结束信号
@@ -843,19 +910,20 @@ class DiscussionThread(BaseAITaskThread):
                 current_temperature = self.config_panel.get_temperature()
 
             # 使用统一的AI服务接口发送请求
-            ai_service = self._create_ai_service(api)
+            ai_service = self._create_ai_service(api, model_name)
             full_response = ""
 
             if stream:
-                # 处理流式响应
+                # 处理流式响应，使用yield_full_response=False只获取增量内容
                 response_generator = ai_service.chat_completion(
-                    messages, model_name, temperature=current_temperature, stream=True
+                    messages, model_name, temperature=current_temperature, 
+                    stream=True, yield_full_response=False
                 )
 
                 for chunk in response_generator:
                     if self.is_stopped():
                         break
-                    full_response = chunk
+                    full_response += chunk
                     # 发送流式更新信号
                     self.stream_update_signal.emit(
                         f"{sender_prefix} {model_name}", full_response, model_name
@@ -895,15 +963,13 @@ class DiscussionThread(BaseAITaskThread):
         self.start_time = time.time()  # 记录讨论开始时间
 
         try:
-            # 获取讨论系统提示词（从环境变量读取，确保使用最新的设置）
-            import os
-
-            discussion_common_prompt = os.getenv("DISCUSSION_SYSTEM_PROMPT", "").strip()
-            discussion_ai1_prompt = os.getenv(
-                "DISCUSSION_AI1_SYSTEM_PROMPT", ""
+            # 获取讨论系统提示词（从配置文件读取，确保使用最新的设置）
+            discussion_common_prompt = config_manager.get("discussion.system_prompt", "").strip()
+            discussion_ai1_prompt = config_manager.get(
+                "discussion.ai1_prompt", ""
             ).strip()
-            discussion_ai2_prompt = os.getenv(
-                "DISCUSSION_AI2_SYSTEM_PROMPT", ""
+            discussion_ai2_prompt = config_manager.get(
+                "discussion.ai2_prompt", ""
             ).strip()
 
             # 初始化讨论历史
@@ -938,17 +1004,17 @@ class DiscussionThread(BaseAITaskThread):
                     self.time_limit > 0
                     and (time.time() - self.start_time) > self.time_limit
                 ):
-                    self.status_signal.emit("讨论已超时")
-                    logger.info(f"讨论已超时，当前轮次: {round_num}")
+                    self.status_signal.emit(i18n.translate("discussion_timed_out"))
+                    logger.info(f"{i18n.translate('discussion_timed_out')}，当前轮次: {round_num}")
                     break
 
                 # 更新状态信号，显示当前轮次
                 self.status_signal.emit(
-                    f"----- 第 {round_num}/{self.rounds} 轮开始 -----"
+                    i18n.translate("discussion_round_start", round_num=round_num, total_rounds=self.rounds)
                 )
 
-                # 发送系统提示，显示当前轮次
-                self.update_signal.emit("系统", f"=== 第 {round_num} 轮讨论 ===")
+                # 发送轮次信息
+                self.update_signal.emit("系统", f"=== {i18n.translate('discussion_round', round_num=round_num)} ===")
 
                 # ============================ AI1发言阶段 ============================
                 try:
@@ -964,8 +1030,9 @@ class DiscussionThread(BaseAITaskThread):
                     ai1_context = f"主题：{self.topic}。\n\n"
                     if self.discussion_history:
                         # 添加之前的讨论内容，跳过系统提示词
-                        for i, msg in enumerate(self.discussion_history[1:]):
-                            speaker = "AI1" if i % 2 == 0 else "AI2"
+                        for msg in self.discussion_history[1:]:
+                            # 直接使用消息中的role作为发言者标识
+                            speaker = msg['role']
                             ai1_context += f"{speaker}：{msg['content']}\n\n"
                     # 添加AI1的任务指令
                     ai1_context += "请继续提供你的观点和分析。"
@@ -1015,8 +1082,9 @@ class DiscussionThread(BaseAITaskThread):
                     ai2_context = f"主题：{self.topic}。\n\n"
                     if self.discussion_history:
                         # 添加之前的讨论内容，跳过系统提示词
-                        for i, msg in enumerate(self.discussion_history[1:]):
-                            speaker = "AI1" if i % 2 == 0 else "AI2"
+                        for msg in self.discussion_history[1:]:
+                            # 直接使用消息中的role作为发言者标识
+                            speaker = msg['role']
                             ai2_context += f"{speaker}：{msg['content']}\n\n"
                     # 添加AI2的任务指令
                     ai2_context += "请继续提供你的观点和分析。"
@@ -1056,10 +1124,10 @@ class DiscussionThread(BaseAITaskThread):
 
             # 计算讨论总耗时
             total_time = time.time() - self.start_time
-            self.status_signal.emit(f"讨论结束，总耗时: {total_time:.2f} 秒")
+            self.status_signal.emit(i18n.translate('discussion_ended_with_time', total_time=f'{total_time:.2f}'))
 
             # 添加讨论结束消息到讨论历史
-            self.update_signal.emit("系统", "=== 讨论结束 ===")
+            self.update_signal.emit("系统", f"=== {i18n.translate('discussion_ended')} ===")
             self.finished_signal.emit()
         except Exception as e:
             # 统一处理所有异常

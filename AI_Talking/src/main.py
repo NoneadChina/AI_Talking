@@ -17,10 +17,7 @@ sys.path.insert(0, base_dir)
 # 也添加父目录，以防万一
 sys.path.insert(0, os.path.dirname(base_dir))
 
-# 加载.env文件
-from dotenv import load_dotenv
 
-load_dotenv()
 
 # 标准库导入
 
@@ -47,7 +44,6 @@ from utils.config_manager import config_manager  # 导入配置管理器
 # UI组件导入
 from ui.about_tab import AboutTabWidget
 from ui.api_settings import APISettingsWidget
-from ui.batch_processing_tab import BatchProcessingTabWidget
 from ui.chat_tab import ChatTabWidget
 from ui.debate_tab import DebateTabWidget
 from ui.discussion_tab import DiscussionTabWidget
@@ -110,6 +106,9 @@ class AI_Talking_MainWindow(QMainWindow):
 
         # 启动时检查更新
         self.update_manager.check_updates_on_startup()
+        
+        # 启动后自动初始化聊天标签页，而不是等到用户点击
+        self._initialize_chat_tab()
 
     def init_ui(self):
         """
@@ -161,38 +160,26 @@ class AI_Talking_MainWindow(QMainWindow):
     def _initialize_tabs(self):
         """
         初始化标签页
+        优化：将所有标签页改为延迟加载，只在需要时初始化，减少启动时间
         """
-        # 创建API设置组件
-        self.api_settings_widget = APISettingsWidget()
-
-        # 创建聊天标签页（关键组件，立即初始化）
-        self.chat_tab = ChatTabWidget(self.api_settings_widget)
-
-        # 创建讨论标签页（关键组件，立即初始化）
-        self.discussion_tab = DiscussionTabWidget(self.api_settings_widget)
-
-        # 创建辩论标签页（关键组件，立即初始化）
-        self.debate_tab = DebateTabWidget(self.api_settings_widget)
-
-        # 创建批量处理标签页（关键组件，立即初始化）
-        self.batch_processing_tab = BatchProcessingTabWidget(self.api_settings_widget)
-
-        # 初始化非关键标签页为None（延迟初始化）
+        # 初始化所有标签页为None，全部采用延迟加载
+        self.api_settings_widget = None
+        self.chat_tab = None
+        self.discussion_tab = None
+        self.debate_tab = None
         self.history_management_tab = None
         self.about_tab = None
 
     def _add_tabs(self):
         """
         添加标签页到标签页控件
+        优化：所有标签页初始化为占位符，只有切换时才加载实际内容
         """
-        # 将关键标签页添加到标签页控件
-        self.tabs.addTab(self.chat_tab, i18n.translate("tab_chat"))
-        self.tabs.addTab(self.discussion_tab, i18n.translate("tab_discussion"))
-        self.tabs.addTab(self.debate_tab, i18n.translate("tab_debate"))
-        self.tabs.addTab(self.batch_processing_tab, i18n.translate("tab_batch"))
-        self.tabs.addTab(self.api_settings_widget, i18n.translate("tab_settings"))
-
-        # 添加占位符标签页，用于历史和关于标签页的延迟初始化
+        # 添加所有标签页的占位符，只有在切换时才会加载实际内容
+        self.tabs.addTab(QWidget(), i18n.translate("tab_chat"))
+        self.tabs.addTab(QWidget(), i18n.translate("tab_discussion"))
+        self.tabs.addTab(QWidget(), i18n.translate("tab_debate"))
+        self.tabs.addTab(QWidget(), i18n.translate("tab_settings"))
         self.tabs.addTab(QWidget(), i18n.translate("tab_history"))
         self.tabs.addTab(QWidget(), i18n.translate("tab_about"))
 
@@ -211,28 +198,19 @@ class AI_Talking_MainWindow(QMainWindow):
         # 辩论标签页图标
         self.tabs.setTabIcon(2, style.standardIcon(QStyle.SP_MessageBoxQuestion))
 
-        # 批量处理标签页图标
-        self.tabs.setTabIcon(3, style.standardIcon(QStyle.SP_DialogApplyButton))
-
         # 设置标签页图标
-        self.tabs.setTabIcon(4, style.standardIcon(QStyle.SP_FileDialogListView))
+        self.tabs.setTabIcon(3, style.standardIcon(QStyle.SP_FileDialogListView))
 
         # 历史记录标签页图标（占位符）
-        self.tabs.setTabIcon(5, style.standardIcon(QStyle.SP_FileDialogBack))
+        self.tabs.setTabIcon(4, style.standardIcon(QStyle.SP_FileDialogBack))
 
         # 关于标签页图标（占位符）
-        self.tabs.setTabIcon(6, style.standardIcon(QStyle.SP_DialogHelpButton))
+        self.tabs.setTabIcon(5, style.standardIcon(QStyle.SP_DialogHelpButton))
 
     def _connect_signals(self):
         """
         连接信号
         """
-        # 连接API设置保存信号
-        self.api_settings_widget.settings_saved.connect(self.handle_settings_saved)
-
-        # 连接聊天标签页的更新信号
-        self.chat_tab.update_signal.connect(self.handle_chat_update)
-
         # 连接标签页切换信号，用于延迟初始化
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
@@ -243,20 +221,49 @@ class AI_Talking_MainWindow(QMainWindow):
         """
         处理API设置保存事件
         当API设置保存后，刷新所有模块的模型列表和系统提示词
+        优化：检查组件是否已初始化，避免因延迟加载导致的错误
         """
         logger.info("API设置已保存，刷新所有模块的模型列表和系统提示词")
 
-        # 刷新聊天模块的模型列表和系统提示词
-        self.chat_tab.update_chat_model_list()
+        # 清除所有模型提供商对应的缓存模型列表
+        from utils.model_manager import model_manager
+        from utils.ai_service import AIServiceFactory
+        
+        logger.info("清除所有模型缓存")
+        # 清除model_manager中的所有缓存
+        model_manager.clear_cache()
+        
+        # 清除所有AI服务类型的缓存
+        service_types = ["ollama", "openai", "deepseek", "ollama_cloud"]
+        for service_type in service_types:
+            try:
+                # 为每种服务类型创建实例并清除缓存
+                if service_type == "ollama":
+                    # Ollama需要base_url参数
+                    from ui.api_settings import APISettingsWidget
+                    api_settings = APISettingsWidget()
+                    base_url = api_settings.get_ollama_base_url()
+                    service = AIServiceFactory.create_ai_service(service_type, base_url=base_url)
+                else:
+                    # 其他服务类型不需要特定参数
+                    service = AIServiceFactory.create_ai_service(service_type)
+                
+                service.clear_cache()
+                logger.info(f"已清除{service_type}服务的模型缓存")
+            except Exception as e:
+                logger.warning(f"清除{service_type}服务缓存时出错: {str(e)}")
 
-        # 刷新讨论模块的模型列表和系统提示词
-        self._refresh_discussion_model_list()
+        # 刷新聊天模块的模型列表和系统提示词（只有在已初始化的情况下）
+        if self.chat_tab is not None:
+            self.chat_tab.update_chat_model_list()
 
-        # 刷新辩论模块的模型列表和系统提示词
-        self._refresh_debate_model_list()
+        # 刷新讨论模块的模型列表和系统提示词（只有在已初始化的情况下）
+        if self.discussion_tab is not None:
+            self._refresh_discussion_model_list()
 
-        # 刷新批量处理模块的模型列表和系统提示词
-        self._refresh_batch_model_list()
+        # 刷新辩论模块的模型列表和系统提示词（只有在已初始化的情况下）
+        if self.debate_tab is not None:
+            self._refresh_debate_model_list()
 
         # 刷新窗口标题和标签页标题
         self.update_tab_titles()
@@ -279,15 +286,6 @@ class AI_Talking_MainWindow(QMainWindow):
         panel.update_model_list(panel.api2_combo, panel.model2_combo)
         panel.update_model_list(panel.api3_combo, panel.model3_combo)
 
-    def _refresh_batch_model_list(self):
-        """
-        刷新批量处理模块的模型列表
-        """
-        panel = self.batch_processing_tab.ai_config_panel
-        panel.update_ai1_model_list()
-        panel.update_ai2_model_list()
-        panel.update_ai3_model_list()
-
     def handle_chat_update(self, sender, content, model):
         """
         处理聊天更新信号
@@ -304,38 +302,116 @@ class AI_Talking_MainWindow(QMainWindow):
 
     def on_tab_changed(self, index):
         """
-        处理标签页切换事件，实现非关键组件的延迟初始化
+        处理标签页切换事件，实现所有组件的延迟初始化
 
         Args:
             index: 切换到的标签页索引
         """
         logger.info(f"标签页切换到索引 {index}")
-
-        # 历史管理标签页（索引5）
-        if index == 5 and self.history_management_tab is None:
+        
+        # 获取当前标签页的文本，用于更可靠地识别标签页
+        current_tab_text = self.tabs.tabText(index)
+        
+        # 获取应用风格，用于设置图标
+        style = QApplication.style()
+        
+        # 聊天标签页
+        if current_tab_text == i18n.translate("tab_chat") and self.chat_tab is None:
+            logger.info("正在初始化聊天标签页...")
+            # 确保API设置组件已初始化
+            if self.api_settings_widget is None:
+                self.api_settings_widget = APISettingsWidget()
+                # 连接API设置保存信号
+                self.api_settings_widget.settings_saved.connect(self.handle_settings_saved)
+            self.chat_tab = ChatTabWidget(self.api_settings_widget)
+            # 连接聊天标签页的更新信号
+            self.chat_tab.update_signal.connect(self.handle_chat_update)
+            # 替换占位符标签页
+            self.tabs.removeTab(index)
+            self.tabs.insertTab(index, self.chat_tab, i18n.translate("tab_chat"))
+            # 重新设置图标
+            self.tabs.setTabIcon(index, style.standardIcon(QStyle.SP_MessageBoxInformation))
+            # 切换到新添加的标签页
+            self.tabs.setCurrentIndex(index)
+            logger.info("聊天标签页初始化完成")
+        
+        # 讨论标签页
+        elif current_tab_text == i18n.translate("tab_discussion") and self.discussion_tab is None:
+            logger.info("正在初始化讨论标签页...")
+            # 确保API设置组件已初始化
+            if self.api_settings_widget is None:
+                self.api_settings_widget = APISettingsWidget()
+                # 连接API设置保存信号
+                self.api_settings_widget.settings_saved.connect(self.handle_settings_saved)
+            self.discussion_tab = DiscussionTabWidget(self.api_settings_widget)
+            # 替换占位符标签页
+            self.tabs.removeTab(index)
+            self.tabs.insertTab(index, self.discussion_tab, i18n.translate("tab_discussion"))
+            # 重新设置图标
+            self.tabs.setTabIcon(index, style.standardIcon(QStyle.SP_FileDialogDetailedView))
+            # 切换到新添加的标签页
+            self.tabs.setCurrentIndex(index)
+            logger.info("讨论标签页初始化完成")
+        
+        # 辩论标签页
+        elif current_tab_text == i18n.translate("tab_debate") and self.debate_tab is None:
+            logger.info("正在初始化辩论标签页...")
+            # 确保API设置组件已初始化
+            if self.api_settings_widget is None:
+                self.api_settings_widget = APISettingsWidget()
+                # 连接API设置保存信号
+                self.api_settings_widget.settings_saved.connect(self.handle_settings_saved)
+            self.debate_tab = DebateTabWidget(self.api_settings_widget)
+            # 替换占位符标签页
+            self.tabs.removeTab(index)
+            self.tabs.insertTab(index, self.debate_tab, i18n.translate("tab_debate"))
+            # 重新设置图标
+            self.tabs.setTabIcon(index, style.standardIcon(QStyle.SP_MessageBoxQuestion))
+            # 切换到新添加的标签页
+            self.tabs.setCurrentIndex(index)
+            logger.info("辩论标签页初始化完成")
+        
+        # 设置标签页
+        elif current_tab_text == i18n.translate("tab_settings"):
+            logger.info("正在初始化设置标签页...")
+            # 确保API设置组件已初始化
+            if self.api_settings_widget is None:
+                self.api_settings_widget = APISettingsWidget()
+                # 连接API设置保存信号
+                self.api_settings_widget.settings_saved.connect(self.handle_settings_saved)
+            # 检查当前标签页是否为占位符（QWidget实例）
+            current_widget = self.tabs.widget(index)
+            if isinstance(current_widget, QWidget) and current_widget.layout() is None:
+                # 替换占位符标签页
+                self.tabs.removeTab(index)
+                self.tabs.insertTab(index, self.api_settings_widget, i18n.translate("tab_settings"))
+                # 重新设置图标
+                self.tabs.setTabIcon(index, style.standardIcon(QStyle.SP_FileDialogListView))
+                # 切换到新添加的标签页
+                self.tabs.setCurrentIndex(index)
+            logger.info("设置标签页初始化完成")
+        
+        # 历史管理标签页
+        elif current_tab_text == i18n.translate("tab_history") and self.history_management_tab is None:
             logger.info("正在初始化历史管理标签页...")
             self.history_management_tab = HistoryManagementTabWidget()
             # 替换占位符标签页
             self.tabs.removeTab(index)
-            self.tabs.insertTab(
-                index, self.history_management_tab, i18n.translate("tab_history")
-            )
+            self.tabs.insertTab(index, self.history_management_tab, i18n.translate("tab_history"))
             # 重新设置图标
-            style = QApplication.style()
             self.tabs.setTabIcon(index, style.standardIcon(QStyle.SP_FileDialogBack))
             # 切换到新添加的标签页
             self.tabs.setCurrentIndex(index)
             logger.info("历史管理标签页初始化完成")
 
-        # 关于标签页（索引6）
-        elif index == 6 and self.about_tab is None:
+        # 关于标签页
+        elif current_tab_text == i18n.translate("tab_about") and self.about_tab is None:
             logger.info("正在初始化关于标签页...")
             self.about_tab = AboutTabWidget()
             # 替换占位符标签页
             self.tabs.removeTab(index)
             self.tabs.insertTab(index, self.about_tab, i18n.translate("tab_about"))
             # 重新设置图标
-            style = QApplication.style()
             self.tabs.setTabIcon(index, style.standardIcon(QStyle.SP_DialogHelpButton))
             # 切换到新添加的标签页
             self.tabs.setCurrentIndex(index)
@@ -353,10 +429,9 @@ class AI_Talking_MainWindow(QMainWindow):
             0: "tab_chat",
             1: "tab_discussion",
             2: "tab_debate",
-            3: "tab_batch",
-            4: "tab_settings",
-            5: "tab_history",
-            6: "tab_about",
+            3: "tab_settings",
+            4: "tab_history",
+            5: "tab_about",
         }
 
         for index, translation_key in tab_translations.items():
@@ -368,7 +443,6 @@ class AI_Talking_MainWindow(QMainWindow):
             ("chat_tab", self.chat_tab),
             ("discussion_tab", self.discussion_tab),
             ("debate_tab", self.debate_tab),
-            ("batch_processing_tab", self.batch_processing_tab),
             ("api_settings_widget", self.api_settings_widget),
             ("history_management_tab", self.history_management_tab),
             ("about_tab", self.about_tab),
@@ -396,14 +470,106 @@ class AI_Talking_MainWindow(QMainWindow):
         """
         logger.error(f"聊天历史异步加载失败: {error_message}")
 
+    def _initialize_chat_tab(self):
+        """
+        初始化聊天标签页，在启动时自动调用
+        """
+        logger.info("启动时自动初始化聊天标签页...")
+        # 确保API设置组件已初始化
+        if self.api_settings_widget is None:
+            self.api_settings_widget = APISettingsWidget()
+            # 连接API设置保存信号
+            self.api_settings_widget.settings_saved.connect(self.handle_settings_saved)
+        self.chat_tab = ChatTabWidget(self.api_settings_widget)
+        # 连接聊天标签页的更新信号
+        self.chat_tab.update_signal.connect(self.handle_chat_update)
+        # 替换占位符标签页
+        self.tabs.removeTab(0)
+        self.tabs.insertTab(0, self.chat_tab, i18n.translate("tab_chat"))
+        # 重新设置图标
+        style = QApplication.style()
+        self.tabs.setTabIcon(0, style.standardIcon(QStyle.SP_MessageBoxInformation))
+        # 切换到聊天标签页
+        self.tabs.setCurrentIndex(0)
+        logger.info("聊天标签页初始化完成")
+
+    def resizeEvent(self, event):
+        """
+        窗口大小变化事件处理
+        保存窗口大小和位置，以便下次启动时恢复
+        """
+        try:
+            # 调用父类的resizeEvent方法
+            super().resizeEvent(event)
+            
+            # 获取当前窗口的大小和位置
+            x = self.x()
+            y = self.y()
+            width = self.width()
+            height = self.height()
+            
+            # 保存到配置文件
+            config_manager.set('app.window.x', x)
+            config_manager.set('app.window.y', y)
+            config_manager.set('app.window.width', width)
+            config_manager.set('app.window.height', height)
+            
+            # 保存配置到文件
+            config_manager.save_config()
+        except Exception as e:
+            logger.error(f"处理窗口大小变化事件时出错: {str(e)}")
+    
+    def moveEvent(self, event):
+        """
+        窗口移动事件处理
+        保存窗口位置，以便下次启动时恢复
+        """
+        try:
+            # 调用父类的moveEvent方法
+            super().moveEvent(event)
+            
+            # 获取当前窗口的位置
+            x = self.x()
+            y = self.y()
+            
+            # 保存到配置文件
+            config_manager.set('app.window.x', x)
+            config_manager.set('app.window.y', y)
+            
+            # 保存配置到文件
+            config_manager.save_config()
+        except Exception as e:
+            logger.error(f"处理窗口移动事件时出错: {str(e)}")
+    
     def closeEvent(self, event):
         """
         窗口关闭事件处理
         """
         logger.info("应用程序正在关闭")
-        # 保存聊天历史
-        self.chat_history_manager.save_history()
-        event.accept()
+        try:
+            # 保存聊天历史
+            self.chat_history_manager.save_history()
+            
+            # 保存当前窗口的大小和位置
+            x = self.x()
+            y = self.y()
+            width = self.width()
+            height = self.height()
+            
+            # 保存到配置文件
+            config_manager.set('app.window.x', x)
+            config_manager.set('app.window.y', y)
+            config_manager.set('app.window.width', width)
+            config_manager.set('app.window.height', height)
+            
+            # 保存配置到文件
+            config_manager.save()
+            
+            event.accept()
+        except Exception as e:
+            logger.error(f"处理窗口关闭事件时出错: {str(e)}")
+            # 即使出错也继续关闭窗口
+            event.accept()
 
 
 def main():

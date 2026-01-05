@@ -14,7 +14,7 @@ set "START_MENU_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\AI Talking"
 
 :DISPLAY_MENU
 echo.==========================================================================
-echo.                  AI Talking 安装程序 v0.3.9
+echo.                  AI Talking 安装程序 v0.4.1
  echo.==========================================================================
 echo.  [1] 安装 AI Talking
 echo.  [2] 创建桌面快捷方式

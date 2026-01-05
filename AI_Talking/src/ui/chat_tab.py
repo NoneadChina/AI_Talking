@@ -9,6 +9,7 @@ import time
 import threading
 import markdown
 from utils.logger_config import get_logger
+from utils.config_manager import config_manager
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
@@ -98,7 +99,7 @@ class ChatTabWidget(QWidget):
             """
             QGroupBox {
                 font-weight: bold;
-                font-size: 11pt;
+                font-size: 10pt;
                 border: 1px solid #ddd;
                 border-radius: 8px;
                 margin-top: 10px;
@@ -225,7 +226,7 @@ class ChatTabWidget(QWidget):
             """
             QGroupBox {
                 font-weight: bold;
-                font-size: 11pt;
+                font-size: 10pt;
                 border: 1px solid #ddd;
                 border-radius: 8px;
                 margin-top: 10px;
@@ -417,10 +418,18 @@ class ChatTabWidget(QWidget):
             elif api == "Ollama Cloud":
                 models = ["llama3:70b", "llama3:8b", "gemma:7b", "mistral:7b"]
 
-        # 添加模型列表
+        # 分类模型：云端模型（包含'cloud'）在上，本地模型在下
         if models:
-            self.chat_model_combo.addItems(models)
-            logger.info(f"添加{api}模型: {models}")
+            # 分离云端模型和本地模型
+            cloud_models = [model for model in models if 'cloud' in model.lower()]
+            local_models = [model for model in models if 'cloud' not in model.lower()]
+            
+            # 合并分类后的模型列表（云端模型在前，本地模型在后）
+            sorted_models = cloud_models + local_models
+            
+            # 添加分类后的模型列表
+            self.chat_model_combo.addItems(sorted_models)
+            logger.info(f"添加{api}分类模型: 云端{len(cloud_models)}个，本地{len(local_models)}个")
 
         # 设置默认模型为gpt-oss:120b-cloud
         if self.chat_model_combo.count() > 0:
@@ -487,11 +496,9 @@ class ChatTabWidget(QWidget):
             )
             logger.info(f"当前发送的消息: {message}")
 
-            # 获取聊天系统提示词（从环境变量读取，确保使用最新的设置）
-            import os
-
-            chat_system_prompt = os.getenv(
-                "CHAT_SYSTEM_PROMPT", "请使用简体中文回答"
+            # 获取聊天系统提示词（从配置文件读取，确保使用最新的设置）
+            chat_system_prompt = config_manager.get(
+                "chat.system_prompt", "请使用简体中文回答"
             ).strip()
 
             # 检查聊天历史是否为空，如果为空则添加系统提示词
@@ -506,8 +513,9 @@ class ChatTabWidget(QWidget):
                 {"role": "user", "content": message}
             )
 
-            # 创建AI服务实例
-            ai_service = None
+            # 严格按照用户选择的API类型来决定使用哪个服务
+            # 不管模型名称是什么，只要用户选择了Ollama，就使用Ollama服务
+            # 不管模型名称是什么，只要用户选择了Ollama Cloud，就使用Ollama Cloud服务
             if api == "Ollama":
                 base_url = self.api_settings_widget.get_ollama_base_url()
                 ai_service = AIServiceFactory.create_ai_service(
@@ -525,17 +533,6 @@ class ChatTabWidget(QWidget):
                 )
             elif api == "Ollama Cloud":
                 api_key = self.api_settings_widget.ollama_cloud_key_edit.text().strip()
-                # 检查 API 密钥是否已设置
-                if not api_key:
-                    # 使用 PyQt5 的信号机制在主线程中显示对话框
-                    from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
-                    QMetaObject.invokeMethod(
-                        self,
-                        "show_api_key_warning",
-                        Qt.QueuedConnection,
-                        Q_ARG(str, "Ollama Cloud")
-                    )
-                    raise ValueError("Ollama Cloud API 密钥未设置")
                 # 使用 Ollama Cloud 服务 URL
                 base_url = self.api_settings_widget.get_ollama_cloud_base_url()
                 ai_service = AIServiceFactory.create_ai_service(

@@ -17,10 +17,10 @@ logger = get_logger(__name__)
 
 
 def retry_with_backoff(
-    max_retries: int = 3,
-    base_delay: float = 1.0,
-    max_delay: float = 10.0,
-    retry_exceptions: tuple = (Exception,),
+    max_retries: int = 2,  # 减少最大重试次数
+    base_delay: float = 0.5,  # 减少基础延迟
+    max_delay: float = 5.0,  # 减少最大延迟
+    retry_exceptions: tuple = (requests.exceptions.ConnectionError, requests.exceptions.Timeout),  # 只对特定错误重试
 ) -> Callable:
     """
     重试装饰器，带有指数退避机制
@@ -29,7 +29,7 @@ def retry_with_backoff(
         max_retries: 最大重试次数
         base_delay: 基础延迟时间（秒）
         max_delay: 最大延迟时间（秒）
-        retry_exceptions: 重试的异常类型，默认为所有Exception
+        retry_exceptions: 重试的异常类型，仅对连接错误和超时错误重试
 
     Returns:
         Callable: 装饰后的函数
@@ -57,6 +57,10 @@ def retry_with_backoff(
                     )
                     time.sleep(delay)
                     retries += 1
+                except Exception as e:
+                    # 其他错误直接抛出，不重试
+                    logger.error(f"请求失败，直接抛出错误: {str(e)}")
+                    raise
 
         return wrapper
 
@@ -130,11 +134,11 @@ class RateLimiter:
 # 不同服务类型的速率限制配置
 # 可根据实际API提供商的限制进行调整
 rate_limiter = {
-    "openai": RateLimiter(max_calls=30, period=60),  # OpenAI: 30次/分钟
-    "deepseek": RateLimiter(max_calls=30, period=60),  # DeepSeek: 30次/分钟
-    "ollama": RateLimiter(max_calls=60, period=60),  # Ollama: 60次/分钟
-    "ollamacloud": RateLimiter(max_calls=30, period=60),  # Ollama Cloud: 30次/分钟
-    "default": RateLimiter(max_calls=20, period=60),  # 默认: 20次/分钟
+    "openai": RateLimiter(max_calls=60, period=60),  # 增加到60次/分钟
+    "deepseek": RateLimiter(max_calls=60, period=60),  # 增加到60次/分钟
+    "ollama": RateLimiter(max_calls=120, period=60),  # Ollama本地部署，提高到120次/分钟
+    "ollamacloud": RateLimiter(max_calls=60, period=60),  # 增加到60次/分钟
+    "default": RateLimiter(max_calls=40, period=60),  # 增加到40次/分钟
 }
 
 
@@ -452,7 +456,7 @@ class OllamaAIService(AIServiceInterface):
             }
 
             response = requests.post(
-                f"{self.base_url}/api/chat", json=payload, stream=stream, timeout=300
+                f"{self.base_url}/api/chat", json=payload, stream=stream, timeout=60  # 减少超时时间到60秒
             )
             response.raise_for_status()
 
@@ -647,7 +651,7 @@ class OpenAIAIService(AIServiceInterface):
                 },
                 json=payload,
                 stream=stream,
-                timeout=300,
+                timeout=60,  # 减少超时时间到60秒
             )
             response.raise_for_status()
 
@@ -848,7 +852,7 @@ class DeepSeekAIService(AIServiceInterface):
                 },
                 json=payload,
                 stream=stream,
-                timeout=300,
+                timeout=60,  # 减少超时时间到60秒
             )
             response.raise_for_status()
 
@@ -1070,7 +1074,7 @@ class OllamaCloudAIService(AIServiceInterface):
                 headers=headers,
                 json=payload,
                 stream=stream,
-                timeout=300,
+                timeout=60,  # 减少超时时间到60秒
             )
 
             logger.info(f"Ollama Cloud API 响应状态码: {response.status_code}")
@@ -1149,6 +1153,10 @@ class OllamaCloudAIService(AIServiceInterface):
             raise RuntimeError(f"Ollama Cloud API 未知错误: {str(e)}") from e
 
 
+# AI 服务实例缓存
+_ai_service_cache = {}
+
+
 class AIServiceFactory:
     """
     AI 服务工厂类，用于创建不同类型的 AI 服务实例
@@ -1157,7 +1165,7 @@ class AIServiceFactory:
     @staticmethod
     def create_ai_service(service_type: str, **kwargs) -> AIServiceInterface:
         """
-        创建 AI 服务实例
+        创建 AI 服务实例，优先从缓存获取
 
         Args:
             service_type: 服务类型，可选值："ollama", "openai", "deepseek", "ollama_cloud"
@@ -1166,13 +1174,49 @@ class AIServiceFactory:
         Returns:
             AIServiceInterface: AI 服务实例
         """
+        # 创建缓存键，基于服务类型和关键参数
+        cache_key = f"{service_type}_"
+        
+        # 添加关键参数到缓存键
         if service_type == "ollama":
-            return OllamaAIService(**kwargs)
+            cache_key += f"{kwargs.get('base_url', 'default')}"
         elif service_type == "openai":
-            return OpenAIAIService(**kwargs)
+            cache_key += f"{kwargs.get('api_key', '')[:10]}"  # 使用API密钥前10位作为标识
         elif service_type == "deepseek":
-            return DeepSeekAIService(**kwargs)
+            cache_key += f"{kwargs.get('api_key', '')[:10]}"
         elif service_type == "ollama_cloud":
-            return OllamaCloudAIService(**kwargs)
+            cache_key += f"{kwargs.get('api_key', '')[:10]}_{kwargs.get('base_url', 'default')}"
+        
+        # 检查缓存中是否已有实例
+        if cache_key in _ai_service_cache:
+            logger.info(f"从缓存获取 AI 服务实例: {service_type}")
+            return _ai_service_cache[cache_key]
+        
+        # 创建新实例
+        logger.info(f"创建新的 AI 服务实例: {service_type}")
+        ai_service = None
+        
+        if service_type == "ollama":
+            ai_service = OllamaAIService(**kwargs)
+        elif service_type == "openai":
+            ai_service = OpenAIAIService(**kwargs)
+        elif service_type == "deepseek":
+            ai_service = DeepSeekAIService(**kwargs)
+        elif service_type == "ollama_cloud":
+            ai_service = OllamaCloudAIService(**kwargs)
         else:
             raise ValueError(f"不支持的 AI 服务类型: {service_type}")
+        
+        # 缓存实例
+        _ai_service_cache[cache_key] = ai_service
+        
+        return ai_service
+    
+    @staticmethod
+    def clear_cache():
+        """
+        清除所有 AI 服务实例缓存
+        """
+        global _ai_service_cache
+        _ai_service_cache.clear()
+        logger.info("已清除所有 AI 服务实例缓存")

@@ -8,6 +8,7 @@ import datetime
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QFileDialog
 from utils.logger_config import get_logger
+from utils.config_manager import config_manager
 
 # 导入子组件
 from .config_panel import DebateConfigPanel
@@ -138,13 +139,13 @@ class DebateTabWidget(QWidget):
         self.controls_panel.set_controls_enabled(False, True)
 
         # 更新状态信息
-        self.update_status("正在初始化辩论...")
+        self.update_status(i18n.translate("initializing_debate"))
 
         # 清空辩论历史，准备新的辩论
         self.chat_history_panel.clear_debate_history()
 
         # 显示辩论开始消息，告知用户辩论主题
-        self.chat_history_panel.append_to_debate_history("系统", f"辩论主题: {topic}")
+        self.chat_history_panel.append_to_debate_history("系统", f"{i18n.translate('debate_topic')}: {topic}")
 
         # 获取用户配置的辩论参数
         api1, model1 = self.ai_config_panel.get_ai1_config()
@@ -157,7 +158,7 @@ class DebateTabWidget(QWidget):
         api3, model3 = self.ai_config_panel.get_ai3_config()
         self.chat_history_panel.append_to_debate_history(
             "系统",
-            f"辩论配置: 正方AI1({api1}:{model1}) vs 反方AI2({api2}:{model2})，<br>裁判AI3({api3}:{model3})，共{rounds}轮，温度{temperature}",
+            f"{i18n.translate('debate_config')}: {i18n.translate('pro_ai1')}({api1}:{model1}) vs {i18n.translate('con_ai2')}({api2}:{model2})，<br>{i18n.translate('referee_ai3')}({api3}:{model3})，{i18n.translate('total_rounds')} {rounds}，{i18n.translate('temperature')} {temperature}",
         )
 
         # 创建DebateThread实例，传入所有必要参数
@@ -194,17 +195,44 @@ class DebateTabWidget(QWidget):
         """
         停止双AI辩论，处理用户点击"停止辩论"按钮的事件
         """
-        # 检查辩论线程是否存在且正在运行
-        if self.chat_thread and self.chat_thread.isRunning():
-            # 调用线程的stop方法停止辩论
-            self.chat_thread.stop()
-            # 更新状态信息，告知用户正在停止辩论
-            self.update_status("正在停止辩论...")
+        # 检查辩论线程是否存在
+        if self.chat_thread:
+            # 断开辩论线程的信号连接
+            try:
+                self.chat_thread.update_signal.disconnect()
+                self.chat_thread.status_signal.disconnect()
+                self.chat_thread.finished_signal.disconnect()
+                self.chat_thread.error_signal.disconnect()
+                self.chat_thread.stream_update_signal.disconnect()
+            except Exception as e:
+                logger.debug(f"断开辩论线程信号连接时出错: {str(e)}")
+            
+            # 如果线程正在运行，停止它
+            if self.chat_thread.isRunning():
+                self.chat_thread.stop()
+                self.update_status(i18n.translate("stopping_debate"))
+            
+            # 清理线程资源
+            self.chat_thread = None
 
-        # 检查总结线程是否存在且正在运行
-        if self.summary_thread and self.summary_thread.isRunning():
-            # 调用线程的stop方法停止总结
-            self.summary_thread.stop()
+        # 检查总结线程是否存在
+        if self.summary_thread:
+            # 断开总结线程的信号连接
+            try:
+                self.summary_thread.update_signal.disconnect()
+                self.summary_thread.status_signal.disconnect()
+                self.summary_thread.finished_signal.disconnect()
+                self.summary_thread.error_signal.disconnect()
+                self.summary_thread.stream_update_signal.disconnect()
+            except Exception as e:
+                logger.debug(f"断开总结线程信号连接时出错: {str(e)}")
+            
+            # 如果线程正在运行，停止它
+            if self.summary_thread.isRunning():
+                self.summary_thread.stop()
+            
+            # 清理线程资源
+            self.summary_thread = None
 
         # 恢复UI状态，允许用户重新开始辩论
         self.controls_panel.set_controls_enabled(True, False)
@@ -215,7 +243,7 @@ class DebateTabWidget(QWidget):
         处理辩论结束信号，当辩论线程完成所有轮次辩论后调用
         """
         # 更新状态信息，告知用户辩论已完成并开始生成总结
-        self.update_status("辩论完成，正在生成裁判报告...")
+        self.update_status(i18n.translate("debate_completed_generating_judgment"))
         # 更新UI状态
         self.controls_panel.set_controls_enabled(False, False)
 
@@ -234,7 +262,7 @@ class DebateTabWidget(QWidget):
 
         # 构建AI3的系统提示词
         topic = self.config_panel.get_topic()
-        ai3_system_prompt = os.getenv("JUDGE_AI3_SYSTEM_PROMPT", "").format(topic=topic)
+        ai3_system_prompt = config_manager.get("debate.judge_ai3_prompt", "").format(topic=topic)
 
         # 构建完整的辩论文本，包含主题和历史
         full_debate_text = f"辩论主题: {topic}\n\n辩论历史:\n{debate_text}"
@@ -283,7 +311,7 @@ class DebateTabWidget(QWidget):
         )
 
         # 更新状态信息
-        self.update_status("裁判报告生成完成")
+        self.update_status(i18n.translate("judgment_report_generated"))
         # 恢复UI状态
         self.controls_panel.set_controls_enabled(True, False)
         # 清理总结线程资源
@@ -339,13 +367,13 @@ class DebateTabWidget(QWidget):
             error: 错误信息
         """
         # 记录错误日志
-        logger.error(f"裁判报告生成错误: {error}")
+        logger.error(f"{i18n.translate('judgment_report_error')}: {error}")
         # 显示错误信息到讨论历史
         self.chat_history_panel.append_to_debate_history(
-            "系统", f"裁判报告生成错误: {error}"
+            "系统", f"{i18n.translate('judgment_report_error')}: {error}"
         )
         # 更新状态信息
-        self.update_status("裁判报告生成失败")
+        self.update_status(i18n.translate("judgment_report_failed"))
         # 恢复UI状态
         self.controls_panel.set_controls_enabled(True, False)
         # 清理总结线程资源
@@ -359,11 +387,11 @@ class DebateTabWidget(QWidget):
             error: 错误信息
         """
         # 记录错误日志
-        logger.error(f"辩论错误: {error}")
+        logger.error(f"{i18n.translate('debate_error')}: {error}")
         # 显示错误信息到讨论历史
-        self.chat_history_panel.append_to_debate_history("系统", f"辩论错误: {error}")
+        self.chat_history_panel.append_to_debate_history("系统", f"{i18n.translate('debate_error')}: {error}")
         # 更新状态信息
-        self.update_status("辩论失败")
+        self.update_status(i18n.translate("debate_failed"))
         # 恢复UI状态
         self.controls_panel.set_controls_enabled(True, False)
         # 清理讨论线程资源
@@ -712,6 +740,9 @@ class DebateTabWidget(QWidget):
         """
         重新初始化UI，用于语言切换时更新界面
         """
+        # 在语言切换前停止所有正在运行的线程，避免UI更新冲突
+        self.stop_debate()
+        
         # 调用所有子组件的reinit_ui方法
         self.config_panel.reinit_ui()
         self.ai_config_panel.reinit_ui()

@@ -115,7 +115,7 @@ def get_default_styles() -> dict:
     return {
         "group_box": """QGroupBox {
             font-weight: bold;
-            font-size: 11pt;
+            font-size: 10pt;
             border: 1px solid #ddd;
             border-radius: 8px;
             margin-top: 10px;

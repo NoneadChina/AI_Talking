@@ -5,8 +5,31 @@
 """
 
 import os
+import sys
 import yaml
 from typing import Dict, Any, Optional
+
+
+def get_app_data_dir():
+    """
+    获取应用程序数据目录，根据不同操作系统返回不同路径
+    
+    Returns:
+        str: 应用程序数据目录的绝对路径
+    """
+    # 应用名称，用于创建数据目录
+    app_name = "AI_Talking"
+    
+    if sys.platform.startswith('win'):
+        # Windows: C:\Users\用户名\AppData\Roaming\应用名称
+        return os.path.join(os.getenv('APPDATA'), app_name)
+    elif sys.platform.startswith('darwin'):
+        # macOS: ~/Library/Application Support/应用名称
+        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', app_name)
+    else:
+        # Linux: ~/.应用名称
+        return os.path.join(os.path.expanduser('~'), f'.{app_name}')
+
 
 class ConfigManager:
     """配置文件管理器类"""
@@ -20,9 +43,20 @@ class ConfigManager:
         """
         # 默认配置文件路径
         if config_file_path is None:
-            # 获取应用根目录
-            app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_file_path = os.path.join(app_root, 'config.yaml')
+            import sys
+            import os
+            
+            # 根据运行环境选择配置文件路径
+            if getattr(sys, "frozen", False):
+                # 发布阶段：使用用户目录下的配置文件
+                app_data_dir = get_app_data_dir()
+                config_file_path = os.path.join(app_data_dir, 'config.yaml')
+            else:
+                # 调试阶段：使用项目根目录下的配置文件
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                current_dir = os.path.dirname(current_dir)  # 向上一级目录到src
+                current_dir = os.path.dirname(current_dir)  # 再向上一级目录到项目根目录
+                config_file_path = os.path.join(current_dir, 'config.yaml')
         
         self.config_file_path = config_file_path
         self.config: Dict[str, Any] = {}
@@ -33,10 +67,13 @@ class ConfigManager:
         """
         加载默认配置
         """
+        # 获取应用数据目录，用于设置日志文件的绝对路径
+        app_data_dir = get_app_data_dir()
+        
         self.config = {
             'app': {
                 'name': 'AI Talking',
-                'version': '0.3.7',
+                'version': '0.4.1',
                 'debug': False,
                 'language': 'auto',  # 'auto', 'zh', 'en'
                 'window': {
@@ -49,16 +86,42 @@ class ConfigManager:
             'api': {
                 'timeout': 300,  # API调用超时时间（秒）
                 'max_retries': 3,  # API调用最大重试次数
-                'retry_delay': 2.0  # 重试间隔（秒）
+                'retry_delay': 2.0,  # 重试间隔（秒）
+                'openai_key': '',  # OpenAI API密钥
+                'deepseek_key': '',  # DeepSeek API密钥
+                'ollama_cloud_key': '',  # Ollama Cloud API密钥
+                'ollama_cloud_base_url': 'https://ollama.com',  # Ollama Cloud基础URL
+                'ollama_base_url': 'http://localhost:11434'  # Ollama本地基础URL
             },
             'chat': {
                 'max_history_length': 50,  # 最大历史消息数
                 'auto_save': True,  # 是否自动保存聊天历史
-                'save_interval': 30  # 自动保存间隔（秒）
+                'save_interval': 30,  # 自动保存间隔（秒）
+                'system_prompt': ''  # 聊天系统提示词
+            },
+            'discussion': {
+                'system_prompt': '',  # 讨论共享系统提示词
+                'ai1_prompt': '',  # 讨论AI1系统提示词
+                'ai2_prompt': '',  # 讨论AI2系统提示词
+                'expert_ai3_prompt': ''  # 专家AI3系统提示词
+            },
+            'debate': {
+                'system_prompt': '',  # 辩论共享系统提示词
+                'ai1_prompt': '',  # 辩论AI1系统提示词
+                'ai2_prompt': '',  # 辩论AI2系统提示词
+                'judge_ai3_prompt': ''  # 裁判AI3系统提示词
+            },
+            'translation': {
+                'provider': 'openai',  # 翻译服务提供商
+                'default_model': 'gpt-4o',  # 默认翻译模型
+                'system_prompt': '你是一个好用的翻译助手。请将我输入的任何一种语言（当前气泡内容），翻译我需要的语言(需要的语言从翻译菜单选择的语言获取），请直接翻译成例子里的语言即可，我们不做任何的问答，我发给你所有的话都是需要翻译的内容，你只需要回答翻译结果。'  # 翻译系统提示词
+            },
+            'language': {
+                'selection': '简体中文'  # 语言选择
             },
             'logging': {
                 'level': 'INFO',  # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL
-                'file_path': 'logs/app.log',  # 日志文件路径
+                'file_path': os.path.join(app_data_dir, 'logs/app.log'),  # 日志文件路径（绝对路径）
                 'max_bytes': 10485760,  # 单个日志文件最大字节数（10MB）
                 'backup_count': 5  # 保留的备份日志文件数
             },
@@ -136,24 +199,6 @@ class ConfigManager:
                 value = value[key]
             else:
                 return default
-        
-        # 检查是否有环境变量覆盖
-        env_key = '_'.join(keys).upper()
-        if env_key in os.environ:
-            # 根据值的类型尝试转换环境变量值
-            if isinstance(value, bool):
-                return os.environ[env_key].lower() in ('true', '1', 'yes')
-            elif isinstance(value, int):
-                try:
-                    return int(os.environ[env_key])
-                except ValueError:
-                    pass
-            elif isinstance(value, float):
-                try:
-                    return float(os.environ[env_key])
-                except ValueError:
-                    pass
-            return os.environ[env_key]
         
         return value
     

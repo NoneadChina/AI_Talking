@@ -313,10 +313,18 @@ class AIDebateConfigPanel(QWidget):
             elif api == "Ollama Cloud":
                 models = ["llama3:70b", "llama3:8b", "gemma:7b", "mistral:7b"]
 
-        # 添加模型列表
+        # 分类模型：云端模型（包含'cloud'）在上，本地模型在下
         if models:
-            model_combo.addItems(models)
-            logger.info(f"添加{api}模型: {models}")
+            # 分离云端模型和本地模型
+            cloud_models = [model for model in models if 'cloud' in model.lower()]
+            local_models = [model for model in models if 'cloud' not in model.lower()]
+            
+            # 合并分类后的模型列表（云端模型在前，本地模型在后）
+            sorted_models = cloud_models + local_models
+            
+            # 添加分类后的模型列表
+            model_combo.addItems(sorted_models)
+            logger.info(f"添加{api}分类模型: 云端{len(cloud_models)}个，本地{len(local_models)}个")
 
         # 设置默认模型
         default_model = ""

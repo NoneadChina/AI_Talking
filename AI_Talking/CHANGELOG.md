@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-01-05
+
+### Changed
+- 更新软件版本号从0.4.1到1.0.0
+
+### Fixed
+- 修复了讨论和辩论功能中按钮文字不随语言变化的问题
+- 优化了按钮功能和语言同步机制
+- 完善了国际化支持
+
+## [0.4.1] - 2026-01-02
+
+### Changed
+- 更新软件版本号从0.4.0到0.4.1
+
+### Fixed
+- 修复了辩论功能中AI1和AI2输出重复气泡的问题
+- 实现了系统提示词环境变量在保存API配置时立即生效
+- 修复了其他一些小问题
+
+## [0.4.0] - 2025-12-31
+
+### Changed
+- 更新软件版本号从0.3.10到0.4.0
+
+### Added
+- 实现了根据不同操作系统（Windows、Linux、macOS）修改logo图片加载方法
+- 配置文件、log文件和API加密txt文件根据不同操作系统存入用户目录
+
+### Fixed
+- 修复了标签页切换时关于标签页显示为历史标签页的问题
+
+### Removed
+- 删除了批量处理功能
+
 ## [0.3.10] - 2025-12-28
 
 ### Changed

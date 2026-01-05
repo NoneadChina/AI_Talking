@@ -1,0 +1,49 @@
+api:
+  deepseek_key: ''
+  max_retries: 3
+  ollama_base_url: http://localhost:11434
+  ollama_cloud_base_url: https://ollama.com
+  ollama_cloud_key: ''
+  openai_key: ''
+  retry_delay: 2.0
+  timeout: 300
+app:
+  debug: false
+  language: auto
+  name: AI Talking
+  version: 0.4.1
+  window:
+    height: 1000
+    width: 900
+    x: 100
+    y: 100
+chat:
+  auto_save: true
+  max_history_length: 50
+  save_interval: 30
+  system_prompt: ''
+debate:
+  ai1_prompt: ''
+  ai2_prompt: ''
+  judge_ai3_prompt: ''
+  system_prompt: ''
+discussion:
+  ai1_prompt: ''
+  ai2_prompt: ''
+  expert_ai3_prompt: ''
+  system_prompt: ''
+language:
+  selection: 简体中文
+logging:
+  backup_count: 5
+  file_path: logs/app.log
+  level: INFO
+  max_bytes: 10485760
+translation:
+  default_model: gpt-4o
+  provider: openai
+  system_prompt: 你是一个好用的翻译助手。请将我输入的任何一种语言（当前气泡内容），翻译我需要的语言(需要的语言从翻译菜单选择的语言获取），请直接翻译成例子里的语言即可，我们不做任何的问答，我发给你所有的话都是需要翻译的内容，你只需要回答翻译结果。
+update:
+  auto_check: true
+  auto_update: false
+  check_interval: 24

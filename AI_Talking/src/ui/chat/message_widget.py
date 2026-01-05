@@ -81,6 +81,9 @@ class ChatMessageWidget:
         html_content += f"<div class='message {message_class}'>{rendered_content}</div>"
         html_content += "<div class='message-actions'>"
         html_content += (
+            f"<button class='action-button'>{i18n.translate('translate')}</button>"
+        )
+        html_content += (
             f"<button class='action-button'>{i18n.translate('edit')}</button>"
         )
         html_content += (

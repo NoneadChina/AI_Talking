@@ -57,8 +57,18 @@ class HistoryManagementTabWidget(QWidget):
         # 初始化聊天历史管理器
         self.chat_history_manager = ChatHistoryManager()
 
-        # 加载历史记录
-        self.all_chat_histories = self.chat_history_manager.load_history()
+        # 分页相关属性
+        self.current_page = 1
+        self.page_size = 20  # 每页显示20条记录
+        self.total_pages = 1
+        self.total_count = 0
+        
+        # 当前页显示的历史记录
+        self.current_page_histories = []
+        
+        # 加载历史记录总数
+        self.total_count = self.chat_history_manager.get_history_count()
+        self.calculate_total_pages()
 
         # 初始化UI
         self.init_ui()
@@ -113,7 +123,7 @@ class HistoryManagementTabWidget(QWidget):
             """
             QGroupBox {
                 font-weight: bold;
-                font-size: 12pt;
+                font-size: 10pt;
                 border: 1px solid #ddd;
                 border-radius: 8px;
                 margin-top: 10px;
@@ -158,6 +168,7 @@ class HistoryManagementTabWidget(QWidget):
             }
             QListWidget::item:selected {
                 background-color: #e3f2fd;
+                color: #1b5e20;
                 border-radius: 4px;
             }
         """)
@@ -181,7 +192,7 @@ class HistoryManagementTabWidget(QWidget):
             """
             QGroupBox {
                 font-weight: bold;
-                font-size: 12pt;
+                font-size: 10pt;
                 border: 1px solid #ddd;
                 border-radius: 8px;
                 margin-top: 10px;
@@ -200,6 +211,8 @@ class HistoryManagementTabWidget(QWidget):
 
         # 历史详情浏览器控件
         self.history_detail_text = QWebEngineView()
+        # 禁用右键菜单
+        self.history_detail_text.setContextMenuPolicy(Qt.NoContextMenu)
         self.history_detail_text.setStyleSheet(
             """
             QWebEngineView {
@@ -219,10 +232,9 @@ class HistoryManagementTabWidget(QWidget):
 
         # 底部控制区域
         bottom_control_widget = QWidget()
-        bottom_control_layout = QHBoxLayout(bottom_control_widget)
+        bottom_control_layout = QVBoxLayout(bottom_control_widget)
         bottom_control_layout.setContentsMargins(0, 0, 0, 0)
         bottom_control_layout.setSpacing(10)
-        bottom_control_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         
         button_style = """
             QPushButton {
@@ -238,6 +250,13 @@ class HistoryManagementTabWidget(QWidget):
             }
         """
         
+        # 第一行：统计信息和操作按钮
+        top_control_widget = QWidget()
+        top_control_layout = QHBoxLayout(top_control_widget)
+        top_control_layout.setContentsMargins(0, 0, 0, 0)
+        top_control_layout.setSpacing(10)
+        top_control_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        
         # 历史统计信息，靠左
         self.history_stats_label = QLabel(i18n.translate("history_stats"))
         self.history_stats_label.setStyleSheet(
@@ -251,29 +270,29 @@ class HistoryManagementTabWidget(QWidget):
                 border: 1px solid #ddd;
             }
         """)
-        bottom_control_layout.addWidget(self.history_stats_label)
+        top_control_layout.addWidget(self.history_stats_label)
         
         # 添加伸缩项，将按钮推到右侧
-        bottom_control_layout.addStretch()
+        top_control_layout.addStretch()
         
         # 导出选中按钮
         self.export_history_button = QPushButton(i18n.translate("export_selected"))
         self.export_history_button.setStyleSheet(button_style)
         self.export_history_button.clicked.connect(self.export_selected_history)
         self.export_history_button.setEnabled(False)
-        bottom_control_layout.addWidget(self.export_history_button)
+        top_control_layout.addWidget(self.export_history_button)
         
         # 导出所有按钮
         self.export_all_button = QPushButton(i18n.translate("export_all"))
         self.export_all_button.setStyleSheet(button_style)
         self.export_all_button.clicked.connect(self.export_all_history)
-        bottom_control_layout.addWidget(self.export_all_button)
+        top_control_layout.addWidget(self.export_all_button)
         
         # 刷新按钮
         self.load_history_button = QPushButton(i18n.translate("history_refresh"))
         self.load_history_button.setStyleSheet(button_style)
         self.load_history_button.clicked.connect(self.refresh_history_list)
-        bottom_control_layout.addWidget(self.load_history_button)
+        top_control_layout.addWidget(self.load_history_button)
         
         # 删除选中按钮
         self.delete_history_button = QPushButton(
@@ -282,7 +301,7 @@ class HistoryManagementTabWidget(QWidget):
         self.delete_history_button.setStyleSheet(button_style)
         self.delete_history_button.clicked.connect(self.delete_selected_history)
         self.delete_history_button.setEnabled(False)
-        bottom_control_layout.addWidget(self.delete_history_button)
+        top_control_layout.addWidget(self.delete_history_button)
         
         # 清空所有按钮
         self.clear_history_button = QPushButton(i18n.translate("history_clear_all"))
@@ -302,7 +321,41 @@ class HistoryManagementTabWidget(QWidget):
             }
         """)
         self.clear_history_button.clicked.connect(self.clear_all_history)
-        bottom_control_layout.addWidget(self.clear_history_button)
+        top_control_layout.addWidget(self.clear_history_button)
+        
+        bottom_control_layout.addWidget(top_control_widget)
+        
+        # 在顶部控制布局中添加分页控件
+        top_control_layout.addStretch()
+        
+        # 上一页按钮
+        self.prev_page_button = QPushButton(i18n.translate("prev_page"))
+        self.prev_page_button.setStyleSheet(button_style)
+        self.prev_page_button.clicked.connect(self.go_prev_page)
+        self.prev_page_button.setEnabled(False)  # 初始时第一页，禁用上一页
+        top_control_layout.addWidget(self.prev_page_button)
+        
+        # 页码显示
+        self.page_info_label = QLabel()
+        self.page_info_label.setStyleSheet(
+            """
+            QLabel {
+                font-size: 9pt;
+                color: #666;
+                background-color: white;
+                padding: 8px 16px;
+                border-radius: 6px;
+                border: 1px solid #ddd;
+            }
+        """)
+        top_control_layout.addWidget(self.page_info_label)
+        
+        # 下一页按钮
+        self.next_page_button = QPushButton(i18n.translate("next_page"))
+        self.next_page_button.setStyleSheet(button_style)
+        self.next_page_button.clicked.connect(self.go_next_page)
+        self.next_page_button.setEnabled(self.total_pages > 1)  # 如果只有一页，禁用下一页
+        top_control_layout.addWidget(self.next_page_button)
         
         bottom_layout.addWidget(bottom_control_widget)
 
@@ -319,6 +372,15 @@ class HistoryManagementTabWidget(QWidget):
 
         self.setLayout(layout)
         
+    def calculate_total_pages(self):
+        """
+        计算总页数
+        """
+        if self.page_size > 0:
+            self.total_pages = (self.total_count + self.page_size - 1) // self.page_size
+        else:
+            self.total_pages = 1
+        
     def showEvent(self, event):
         """
         标签页显示事件，每次显示时刷新历史列表
@@ -326,48 +388,121 @@ class HistoryManagementTabWidget(QWidget):
         super().showEvent(event)
         self.refresh_history_list()
 
-    def refresh_history_list(self):
+    def refresh_history_list(self, reset_page=True):
         """
         刷新历史记录列表
+        
+        Args:
+            reset_page (bool): 是否重置到第一页
         """
         logger.info("正在刷新历史记录列表...")
 
         # 清空列表
         self.history_list.clear()
 
-        # 重新加载历史记录
-        self.all_chat_histories = self.chat_history_manager.load_history()
-
+        # 重新加载历史记录总数
+        self.total_count = self.chat_history_manager.get_history_count()
+        self.calculate_total_pages()
+        
+        # 如果重置页码或当前页码超过总页数，重置到第一页
+        if reset_page or self.current_page > self.total_pages:
+            self.current_page = 1
+        
+        # 加载当前页的历史记录
+        self.load_current_page_histories()
+        
         # 更新统计信息
         stats_text = i18n.translate("history_count").format(
-            count=len(self.all_chat_histories)
+            count=self.total_count
         )
         self.history_stats_label.setText(stats_text)
+        
+        # 更新页码信息
+        self.update_page_info()
+        
+        # 更新分页按钮状态
+        self.update_page_buttons()
 
-        # 按结束时间倒序排序历史记录，最新的放在前面
-        self.all_chat_histories.sort(key=lambda x: x.get("end_time", ""), reverse=True)
+        # 按结束时间倒序排序当前页的历史记录，最新的放在前面
+        self.current_page_histories.sort(key=lambda x: x.get("end_time", ""), reverse=True)
 
-        # 添加历史记录到列表
-        for i, history in enumerate(self.all_chat_histories):
+        # 添加当前页的历史记录到列表
+        for i, history in enumerate(self.current_page_histories):
             topic = history.get("topic", "无主题")
-            model1_name = history.get("model1", "未知模型")  # 修复变量名
-            model2_name = history.get("model2", "未知模型")  # 修复变量名
+            model1_name = history.get("model1", "未知模型")
+            model2_name = history.get("model2", "未知模型")
             start_time = history.get("start_time", "未知时间")
             end_time = history.get("end_time", "未知时间")
 
+            # 计算原始索引（考虑当前页码和页大小）
+            original_index = (self.current_page - 1) * self.page_size + i
+            
             # 创建列表项
             item_text = (
-                f"{i+1}. {topic} - {model1_name} vs {model2_name} ({start_time})"
+                f"{original_index+1}. {topic} - {model1_name} vs {model2_name} ({start_time})"
             )
             item = QListWidgetItem(item_text)
-            item.setData(1, i)  # 存储索引
+            item.setData(1, original_index)  # 存储原始索引
             item.setToolTip(
                 f"开始时间: {start_time}\n结束时间: {end_time}\n模型: {model1_name} vs {model2_name}"
             )
 
             self.history_list.addItem(item)
 
-        logger.info(f"历史记录列表刷新完成，共 {len(self.all_chat_histories)} 条记录")
+        logger.info(f"历史记录列表刷新完成，当前页 {self.current_page}/{self.total_pages}，显示 {len(self.current_page_histories)} 条记录，共 {self.total_count} 条记录")
+    
+    def load_current_page_histories(self):
+        """
+        加载当前页的历史记录
+        """
+        # 获取完整的历史记录
+        all_histories = self.chat_history_manager.load_history()
+        
+        # 按结束时间倒序排序所有历史记录
+        all_histories.sort(key=lambda x: x.get("end_time", ""), reverse=True)
+        
+        # 计算当前页的起始和结束索引
+        start_index = (self.current_page - 1) * self.page_size
+        end_index = start_index + self.page_size
+        
+        # 获取当前页的历史记录
+        self.current_page_histories = all_histories[start_index:end_index]
+    
+    def update_page_info(self):
+        """
+        更新页码信息显示
+        """
+        page_info_text = i18n.translate("page_info").format(
+            current_page=self.current_page,
+            total_pages=self.total_pages
+        )
+        self.page_info_label.setText(page_info_text)
+    
+    def update_page_buttons(self):
+        """
+        更新分页按钮状态
+        """
+        # 更新上一页按钮状态
+        self.prev_page_button.setEnabled(self.current_page > 1)
+        
+        # 更新下一页按钮状态
+        self.next_page_button.setEnabled(self.current_page < self.total_pages)
+    
+    def go_prev_page(self):
+        """
+        跳转到上一页
+        """
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.refresh_history_list(reset_page=False)
+    
+    def go_next_page(self):
+        """
+        跳转到下一页
+        """
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self.refresh_history_list(reset_page=False)
 
     def on_history_item_clicked(self, item):
         """
@@ -377,10 +512,10 @@ class HistoryManagementTabWidget(QWidget):
             item: 被点击的列表项
         """
         # 获取选中的历史记录索引
-        index = item.data(1)
+        original_index = item.data(1)
 
         # 显示历史记录详情
-        self.show_history_detail(index)
+        self.show_history_detail(original_index)
 
         # 启用删除和导出按钮
         self.delete_history_button.setEnabled(True)
@@ -394,23 +529,32 @@ class HistoryManagementTabWidget(QWidget):
             item: 被双击的列表项
         """
         # 获取选中的历史记录索引
-        index = item.data(1)
+        original_index = item.data(1)
+        
+        # 获取完整的历史记录列表用于发出信号
+        all_histories = self.chat_history_manager.load_history()
+        all_histories.sort(key=lambda x: x.get("end_time", ""), reverse=True)
 
         # 发出历史记录选中信号
-        self.history_selected.emit(self.all_chat_histories[index])
+        if 0 <= original_index < len(all_histories):
+            self.history_selected.emit(all_histories[original_index])
 
-    def show_history_detail(self, index):
+    def show_history_detail(self, original_index):
         """
         显示历史记录详情
 
         Args:
-            index: 历史记录索引
+            original_index: 历史记录的原始索引
         """
-        if 0 <= index < len(self.all_chat_histories):
-            history = self.all_chat_histories[index]
-
-            # 构建历史详情HTML
-            detail_html = """
+        # 获取完整的历史记录列表
+        all_histories = self.chat_history_manager.load_history()
+        all_histories.sort(key=lambda x: x.get("end_time", ""), reverse=True)
+        
+        if 0 <= original_index < len(all_histories):
+            history = all_histories[original_index]
+            
+            # 使用缓存的HTML模板，避免重复构建
+            detail_html_template = """
             <!DOCTYPE html>
             <html>
             <head>
@@ -467,7 +611,7 @@ class HistoryManagementTabWidget(QWidget):
             """
             
             # 替换占位符
-            detail_html = detail_html.format(
+            detail_html = detail_html_template.format(
                 topic=history.get('topic', '无主题'),
                 model1=history.get('model1', '未知模型'),
                 api1=history.get('api1', '未知API'),
@@ -503,15 +647,29 @@ class HistoryManagementTabWidget(QWidget):
         )
 
         if reply == QMessageBox.Yes:
+            # 收集所有要删除的索引
+            indices_to_delete = []
             for item in selected_items:
-                index = item.data(1)
-
-                # 删除历史记录
+                original_index = item.data(1)
+                indices_to_delete.append(original_index)
+            
+            # 按索引从大到小排序，确保删除不会影响后续索引
+            indices_to_delete.sort(reverse=True)
+            
+            # 删除历史记录
+            for index in indices_to_delete:
                 self.chat_history_manager.delete_history(index)
                 self.history_deleted.emit(index)
 
+            # 刷新列表，保持在当前页（如果当前页为空，则自动跳转到上一页）
+            current_items_count = len(self.current_page_histories)
+            if current_items_count == len(selected_items):
+                # 如果删除了当前页所有记录，且不是第一页，则跳转到上一页
+                if self.current_page > 1:
+                    self.current_page -= 1
+            
             # 刷新列表
-            self.refresh_history_list()
+            self.refresh_history_list(reset_page=False)
 
             # 清空详情
             self.history_detail_text.setHtml("<html><body style='margin: 15px;'><p>请选择一条历史记录查看详情</p></body></html>")
@@ -528,7 +686,7 @@ class HistoryManagementTabWidget(QWidget):
         """
         清空所有历史记录
         """
-        if len(self.all_chat_histories) == 0:
+        if self.total_count == 0:
             QMessageBox.information(
                 self, i18n.translate("info"), i18n.translate("history_empty")
             )
@@ -548,8 +706,8 @@ class HistoryManagementTabWidget(QWidget):
             self.chat_history_manager.clear_history()
             self.history_cleared.emit()
 
-            # 刷新列表
-            self.refresh_history_list()
+            # 刷新列表，重置到第一页
+            self.refresh_history_list(reset_page=True)
 
             # 清空详情
             self.history_detail_text.setHtml("<html><body style='margin: 15px;'><p>请选择一条历史记录查看详情</p></body></html>")
@@ -689,7 +847,7 @@ class HistoryManagementTabWidget(QWidget):
         
         # 更新统计信息
         stats_text = i18n.translate("history_count").format(
-            count=len(self.all_chat_histories)
+            count=self.chat_history_manager.get_history_count()
         )
         self.history_stats_label.setText(stats_text)
 

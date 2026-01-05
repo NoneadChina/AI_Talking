@@ -21,7 +21,7 @@ class ResourceManager:
     @staticmethod
     def get_resource_path(resource_name):
         """
-        获取资源文件的绝对路径
+        获取资源文件的绝对路径，支持不同操作系统
 
         Args:
             resource_name: 资源文件名，如 "icon.ico" 或 "noneadLogo.png"
@@ -29,18 +29,38 @@ class ResourceManager:
         Returns:
             str: 资源文件的绝对路径
         """
-        # 根据运行环境确定资源路径
-        if getattr(sys, "frozen", False):
-            # 打包后的可执行文件所在目录
-            current_dir = os.path.dirname(sys.executable)
-        else:
-            # 开发环境下的项目根目录
-            current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            # 根据运行环境确定资源路径
+            if getattr(sys, "frozen", False):
+                # 打包后的可执行文件所在目录
+                current_dir = os.path.dirname(sys.executable)
+                # 对于打包后的应用，resources文件夹可能在不同位置
+                # 尝试多种可能的资源目录位置
+                possible_resource_dirs = [
+                    os.path.join(current_dir, "resources"),
+                    current_dir  # 有些打包工具会将资源文件直接放在可执行文件目录下
+                ]
+            else:
+                # 开发环境下的项目根目录 - 需要向上三级目录才能到达项目根目录
+                # __file__ 是 src/utils/resource_manager.py
+                # 三级父目录才是 AI_Talking 项目根目录
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                possible_resource_dirs = [
+                    os.path.join(project_root, "resources")
+                ]
 
-        # 构建资源文件的绝对路径
-        resource_path = os.path.join(current_dir, "resources", resource_name)
-
-        return resource_path
+            # 尝试所有可能的资源目录，返回第一个存在的资源文件路径
+            for resource_dir in possible_resource_dirs:
+                resource_path = os.path.join(resource_dir, resource_name)
+                if os.path.exists(resource_path):
+                    return resource_path
+            
+            # 如果没有找到资源文件，返回最后尝试的路径
+            return os.path.join(possible_resource_dirs[0], resource_name)
+        except Exception as e:
+            print(f"获取资源路径失败: {str(e)}")
+            # 作为最后的 fallback，返回当前目录下的资源文件路径
+            return os.path.join(os.getcwd(), "resources", resource_name)
 
     @staticmethod
     def load_pixmap(resource_name, width=None, height=None):

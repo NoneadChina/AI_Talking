@@ -8,10 +8,12 @@ API设置窗口部件，用于配置各种AI API的连接信息和系统提示�
 
 import sys
 import os
-from dotenv import load_dotenv
 from utils.logger_config import get_logger
 from utils.i18n_manager import i18n
 from utils.secure_storage import encrypt_data, decrypt_data
+from utils.config_manager import config_manager
+from utils.model_manager import model_manager
+from utils.ai_service import AIServiceFactory
 from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtWidgets import (
     QWidget,
@@ -192,7 +194,7 @@ class APISettingsWidget(QWidget):
         self.provider_label = QLabel(i18n.translate("setting_provider"))
         provider_layout.addWidget(self.provider_label, alignment=Qt.AlignVCenter)
         self.translation_provider_combo = QComboBox()
-        self.translation_provider_combo.addItems(["OpenAI", "DeepSeek", "Ollama"])
+        self.translation_provider_combo.addItems(["OpenAI", "DeepSeek", "Ollama", "Ollama Cloud"])
         self.translation_provider_combo.setStyleSheet(
             """
             QComboBox {
@@ -202,8 +204,9 @@ class APISettingsWidget(QWidget):
                 font-size: 10pt;
                 min-width: 180px;
             }
-        """
-        )
+        """)
+        # 连接服务提供商变化信号，用于更新模型列表
+        self.translation_provider_combo.currentIndexChanged.connect(self.on_translation_provider_changed)
         provider_layout.addWidget(self.translation_provider_combo)
         provider_layout.addStretch()
         translation_layout.addLayout(provider_layout)
@@ -214,9 +217,6 @@ class APISettingsWidget(QWidget):
         self.default_model_label = QLabel(i18n.translate("setting_default_model"))
         model_layout.addWidget(self.default_model_label, alignment=Qt.AlignVCenter)
         self.translation_model_combo = QComboBox()
-        self.translation_model_combo.addItems(
-            ["gpt-4o", "gpt-3.5-turbo", "deepseek-chat", "llama3"]
-        )
         self.translation_model_combo.setStyleSheet(
             """
             QComboBox {
@@ -226,8 +226,7 @@ class APISettingsWidget(QWidget):
                 font-size: 10pt;
                 min-width: 180px;
             }
-        """
-        )
+        """)
         model_layout.addWidget(self.translation_model_combo)
         model_layout.addStretch()
         translation_layout.addLayout(model_layout)
@@ -528,6 +527,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_chat_prompt_placeholder")
         )
         self.chat_system_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.chat_system_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         chat_layout.addWidget(self.chat_system_prompt_edit, 1)  # 添加拉伸因子
         self.chat_group.setLayout(chat_layout)
         chat_prompt_layout.addWidget(self.chat_group, 1)  # 添加拉伸因子
@@ -564,6 +564,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_discussion_prompt_placeholder")
         )
         self.common_system_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.common_system_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.discussion_shared_prompt_label = QLabel(i18n.translate("setting_shared_prompt"))
         discussion_layout.addWidget(self.discussion_shared_prompt_label)
         discussion_layout.addWidget(self.common_system_prompt_edit, 1)  # 添加拉伸因子
@@ -581,6 +582,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_discussion_ai1_placeholder")
         )
         self.ai1_system_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.ai1_system_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         ai1_layout.addWidget(self.ai1_system_prompt_edit, 1)  # 添加拉伸因子
         discussion_ai_layout.addLayout(ai1_layout, 1)
 
@@ -593,6 +595,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_discussion_ai2_placeholder")
         )
         self.ai2_system_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.ai2_system_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         ai2_layout.addWidget(self.ai2_system_prompt_edit, 1)  # 添加拉伸因子
         discussion_ai_layout.addLayout(ai2_layout, 1)
 
@@ -608,6 +611,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_expert_ai3_placeholder")
         )
         self.expert_ai3_system_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.expert_ai3_system_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         expert_layout.addWidget(self.expert_ai3_system_prompt_edit, 1)  # 添加拉伸因子
         discussion_layout.addLayout(expert_layout, 1)  # 添加拉伸因子
 
@@ -648,6 +652,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_debate_prompt_placeholder")
         )
         self.debate_common_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.debate_common_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.debate_shared_prompt_label = QLabel(i18n.translate("setting_shared_prompt"))
         debate_layout.addWidget(self.debate_shared_prompt_label)
         debate_layout.addWidget(self.debate_common_prompt_edit, 1)  # 添加拉伸因子
@@ -665,6 +670,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_debate_ai1_placeholder")
         )
         self.debate_ai1_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.debate_ai1_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         debate_ai1_layout.addWidget(self.debate_ai1_prompt_edit, 1)  # 添加拉伸因子
         debate_ai_layout.addLayout(debate_ai1_layout, 1)
 
@@ -677,6 +683,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_debate_ai2_placeholder")
         )
         self.debate_ai2_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.debate_ai2_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         debate_ai2_layout.addWidget(self.debate_ai2_prompt_edit, 1)  # 添加拉伸因子
         debate_ai_layout.addLayout(debate_ai2_layout, 1)
 
@@ -692,6 +699,7 @@ class APISettingsWidget(QWidget):
             i18n.translate("setting_judge_ai3_placeholder")
         )
         self.judge_ai3_system_prompt_edit.setStyleSheet(prompt_edit_style)
+        self.judge_ai3_system_prompt_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         judge_layout.addWidget(self.judge_ai3_system_prompt_edit, 1)  # 添加拉伸因子
         debate_layout.addLayout(judge_layout, 1)  # 添加拉伸因子
 
@@ -910,88 +918,121 @@ class APISettingsWidget(QWidget):
         """
         加载现有的API设置。
 
-        从环境变量中读取之前保存的配置信息并填充到表单中，包括：
+        从配置文件中读取之前保存的配置信息并填充到表单中，包括：
         1. API密钥
         2. Ollama URL
         3. 系统提示词
         """
         # 加载API密钥和URL - 解密密钥
         from utils.secure_storage import decrypt_data
-        self.openai_key_edit.setText(decrypt_data(os.getenv("OPENAI_API_KEY", "")))
-        self.deepseek_key_edit.setText(decrypt_data(os.getenv("DEEPSEEK_API_KEY", "")))
-        self.ollama_cloud_key_edit.setText(decrypt_data(os.getenv("OLLAMA_CLOUD_API_KEY", "")))
-        self.ollama_cloud_url_edit.setText(
-            os.getenv("OLLAMA_CLOUD_BASE_URL", "https://ollama.com")
-        )
-        self.ollama_url_edit.setText(
-            os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        )
+        # 从配置管理器获取API设置
+        self.openai_key_edit.setText(decrypt_data(config_manager.get('api.openai_key', '')))
+        self.deepseek_key_edit.setText(decrypt_data(config_manager.get('api.deepseek_key', '')))
+        self.ollama_cloud_key_edit.setText(decrypt_data(config_manager.get('api.ollama_cloud_key', '')))
+        self.ollama_cloud_url_edit.setText(config_manager.get('api.ollama_cloud_base_url', 'https://ollama.com'))
+        self.ollama_url_edit.setText(config_manager.get('api.ollama_base_url', 'http://localhost:11434'))
+        
+        # 加载翻译设置
+        translation_provider = config_manager.get('translation.provider', 'Ollama')
+        self.translation_provider = translation_provider
+        translation_model = config_manager.get('translation.default_model', 'llama3')
+        
+        # 设置服务提供商
+        index = self.translation_provider_combo.findText(translation_provider)
+        if index >= 0:
+            self.translation_provider_combo.setCurrentIndex(index)
+        
+        # 初始化模型列表
+        self.on_translation_provider_changed(index)
+        
+        # 设置默认模型
+        index = self.translation_model_combo.findText(translation_model)
+        if index >= 0:
+            self.translation_model_combo.setCurrentIndex(index)
 
         # 加载系统提示词
         # 聊天系统提示词
-        default_chat_prompt = "请使用简体中文回答"
-        self.chat_system_prompt_edit.setPlainText(
-            os.getenv("CHAT_SYSTEM_PROMPT", default_chat_prompt)
-        )
+        default_chat_prompt = "角色定位\n你是一位专业、友善且知识渊博的智能助手，名为“智言”。\n## 核心原则\n1. 准确性第一：基于事实和可靠信息回答，不确定时明确说明\n2. 完整性：提供充分的信息和背景，但避免冗余\n3. 清晰易懂：用平实的简体中文表达，复杂概念需解释\n4. 实用性：回答应具有实际应用价值或启发意义\n## 回答规范\n### 信息类问题回答框架\n1. 核心答案：首先直接、明确地回答核心问题\n2. 关键细节：提供必要的背景信息、数据或定义\n3. 应用场景：说明该信息在现实中的应用或意义\n4. 注意事项：如有需要，补充相关限制条件或争议点\n5. 延伸建议：根据问题性质，提供进一步探索的方向\n### 咨询建议类问题回答框架\n1. 问题分析：简要分析问题的核心矛盾或需求\n2. 方案提供：给出具体、可操作的解决方案或建议\n3. 优劣分析：客观分析不同方案的优缺点\n4. 实施步骤：如适用，提供分步指导\n5. 风险提示：提醒潜在风险或注意事项\n### 创意类问题回答框架\n1. 创意发散：提供多种可能性或思路\n2. 结构组织：帮助整理创意的逻辑框架\n3. 评估标准：提供评估创意质量的标准\n4. 优化建议：给出进一步完善的方向\n## 语言与表达要求\n### 语言规范\n- 使用标准简体中文\n- 专业术语初次出现时需解释\n- 避免网络流行语和不规范表达\n- 句子结构完整，标点正确\n### 语气与态度\n- 保持友善、耐心、专业\n- 尊重用户，不评判用户问题本身\n- 鼓励探索和思考\n- 热情但不夸张\n### 格式规范\n- 较长的回答使用段落分隔\n- 列表项使用数字或项目符号\n- 重要概念可使用强调\n- 复杂信息可考虑表格呈现\n## 特殊情况处理\n### 知识边界处理\n- 如果问题超出知识范围，诚实说明\n- 提供可能的替代信息源或搜索方向\n- 区分“不知道”和“无法确定”\n### 敏感问题处理\n- 不提供违反法律、伦理的建议\n- 对争议性问题保持客观中立\n- 如有必要，提供多视角分析\n### 复杂问题处理\n- 分步骤解答\n- 提供思维框架而非简单答案\n- 鼓励用户参与思考过程\n## 优秀回答标准\n1. 精准性：准确命中问题核心\n2. 深度：不止于表面，提供深入见解\n3. 结构：逻辑清晰，层次分明\n4. 实用：具有实际应用价值\n5. 启发：激发进一步思考\n## 响应模板示例\n### 信息确认型\n“关于[问题主题]，我的理解是...。具体来说...”\n### 建议提供型\n“针对您提到的[问题描述]，我建议可以从以下几个方面考虑：1... 2... 3...”\n### 复杂解释型\n“这个问题涉及几个关键概念，我们先从最基本的开始：[概念A]是指...，然后我们再来看...”\n### 知识边界型\n“关于[具体问题]，我的知识库中相关信息有限。不过，我可以为您提供相关的思考框架...”\n## 持续优化机制\n- 主动询问回答是否满足需求\n- 鼓励用户提供反馈\n- 根据上下文调整回答深度\n- 记住对话历史中的重要偏好\n---\n现在，我已经准备好为您提供准确、有用的信息。请问有什么可以帮助您的吗？\n注意：系统将始终使用简体中文回复，确保所有回答符合中文表达习惯和规范。"
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        chat_prompt = config_manager.get('chat.system_prompt', '')
+        if not chat_prompt:
+            chat_prompt = default_chat_prompt
+        self.chat_system_prompt_edit.setPlainText(chat_prompt)
 
         # 讨论共享系统提示词
-        default_common_prompt = "你是一个参与讨论的AI助手。请根据收到的内容深入思考，并回应，多次回答时尽量从不同角度深入分析。使用第一性原理进行讨论，是一场高强度的智力合作与交锋。这不仅仅是普通的辩论或交流，而是试图共同逼近问题最根本的真相。"
-        self.common_system_prompt_edit.setPlainText(
-            os.getenv("DISCUSSION_SYSTEM_PROMPT", default_common_prompt)
-        )
+        default_common_prompt = "你是一个严谨的学者，正在进行一场基于第一性原理的学术讨论，讨论主题{topic}。请遵循以下原则：\n### 核心原则\n1. 第一性原理思维：始终从最基本的公理、定律或事实出发进行推导，避免依赖类比或经验假设\n2. 渐进深入：从浅层现象逐步推导到深层原理，每一步推理需有逻辑支撑\n3. 对话连续性：认真回应对手的观点，可赞同补充或理性反驳，形成真正的思想交锋\n### 讨论流程规范\n1. 起始层（首轮）：明确讨论主题的基本定义、范围和相关基础事实\n2. 推导层：通过逻辑推演分析因果关系、约束条件与可能性\n3. 深化层：探讨底层机制、本质规律与跨领域关联\n4. 收敛层：识别共识点与分歧点，明确待验证的假设\n### 表达要求\n- 语言保持学术严谨，但避免过度专业化以便理解\n- 每个论点需提供推理路径，使用“因为…所以…”“基于…可推导…”等逻辑连接\n- 当遇到不确定时，可明确标注“此为假设需验证”\n### 对话纪律\n- 每次发言聚焦1-2个核心点，深度优于广度\n- 禁止重复已陈述内容，禁止脱离主题的延伸\n- 若对方提出有效反证，应调整或放弃原有观点。"
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        common_prompt = config_manager.get('discussion.system_prompt', '')
+        if not common_prompt:
+            common_prompt = default_common_prompt
+        self.common_system_prompt_edit.setPlainText(common_prompt)
 
         # 讨论AI1系统提示词
-        default_ai1_prompt = '思维层面-第一性原理的"引擎"，解构与还原能力，概念清晰化与定义能力，公理化思维与逻辑推理能力，批判性思维与溯因能力，系统思维与重建能力'
-        self.ai1_system_prompt_edit.setPlainText(
-            os.getenv("DISCUSSION_AI1_SYSTEM_PROMPT", default_ai1_prompt)
-        )
+        default_ai1_prompt = '角色设定\n你是分析型学者A，擅长解构问题并建立理论框架。你的思维特点是：\n### 思维倾向\n1. 结构优先：习惯先将问题分解为基本要素，建立分析框架\n2. 原理追溯：偏好追问“为什么成立”而非“如何应用”\n3. 边界敏感：关注理论的前提条件和适用范围\n### 特殊职责\n1. 讨论发起：在首轮对话中，你需：\n - 明确定义讨论主题的核心概念\n - 列出已知的基本事实或公理\n - 提出初始分析框架\n2. 逻辑监督：在讨论中注意：\n - 指出逻辑链条的缺失环节\n - 提醒论证过程中的隐含假设\n - 标记需要验证的推论\n### 表达特征\n- 常用表述：让我们先厘清…/从最基本层面看…/这个结论依赖于三个前提…\n- 适度使用思维导图式列举（如 第一、第二、第三 ）\n- 在对方提出案例时，尝试将其归纳为一般规律'
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        ai1_prompt = config_manager.get('discussion.ai1_prompt', '')
+        if not ai1_prompt:
+            ai1_prompt = default_ai1_prompt
+        self.ai1_system_prompt_edit.setPlainText(ai1_prompt)
 
         # 讨论AI2系统提示词
-        default_ai2_prompt = '沟通与协作层面：第一性原理的"桥梁"，苏格拉底式提问术，主动倾听与精准复述，元沟通能力'
-        self.ai2_system_prompt_edit.setPlainText(
-            os.getenv("DISCUSSION_AI2_SYSTEM_PROMPT", default_ai2_prompt)
-        )
+        default_ai2_prompt = '角色设定\n你是综合型学者B，擅长连接多元视角并检验理论适用性。你的思维特点是：\n### 思维倾向\n1. 关联思维：善于发现不同领域的相似模式或原理\n2. 实证导向：关注理论在现实场景中的解释力与预测力\n3. 系统思考：偏好考察各要素的相互作用与整体涌现性\n### 特殊职责\n1. 视角拓展：在讨论中需：\n - 提供跨领域类比或反例\n - 检验理论在不同情境下的稳健性\n - 提出“如果…会怎样”的探索性问题\n2. 实践锚定：\n - 将抽象原理与具体现象连接\n - 指出理论应用的潜在挑战\n - 评估推导结果的现实意义\n### 表达特征\n- 常用表述 这个原理在X领域也表现为…/如果换个情境…/实际案例显示…/\n- 擅长使用 另一方面…  值得注意的是…进行视角补充\n- 当对方提出框架时，尝试为其寻找边界案例或例外情况'
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        ai2_prompt = config_manager.get('discussion.ai2_prompt', '')
+        if not ai2_prompt:
+            ai2_prompt = default_ai2_prompt
+        self.ai2_system_prompt_edit.setPlainText(ai2_prompt)
 
         # 专家AI3系统提示词
-        default_expert_ai3_prompt = "你是一位学术讨论分析师，负责对讨论进行总结和分析。请根据讨论内容提供深入的总结、核心论点梳理和讨论质量评估。"
-        self.expert_ai3_system_prompt_edit.setPlainText(
-            os.getenv("EXPERT_AI3_SYSTEM_PROMPT", default_expert_ai3_prompt)
-        )
+        default_expert_ai3_prompt = "角色设定\n你是领域专家，负责对学术讨论进行系统性总结与提炼,讨论主题{topic}。\n### 总结框架\n请按以下结构组织总结报告：\n#### 1. 讨论演进图谱\n- 标注关键转折点：何时/如何从表层进入深层讨论\n- 绘制逻辑演进路线：展示核心观点的推导路径\n- 识别突破性见解：标记最具启发性的推理环节\n#### 2. 共识与分歧矩阵\n- 共识基础：双方完全认同的基本原理与事实\n- 建设性分歧：促进讨论深度的关键争议点\n- 未决问题：受限于当前信息未能解决的疑问\n#### 3. 第一性原理追溯\n- 回溯每个重要结论的原始出发点\n- 验证推导过程中是否存在逻辑跳跃\n- 标注仍依赖于经验假设的环节\n#### 4. 用户价值提炼\n- 根据用户需求（需在总结前明确），定向提取：\n - 若用户需要决策支持：提取可操作原则与风险评估\n - 若用户需要知识理解：构建概念层级与关系图谱\n - 若用户需要创新启发：识别跨界连接点与未探索方向\n#### 5. 后续探索建议\n- 提出2-3个可深化研究的方向\n- 推荐关键验证方法或数据来源\n- 提示潜在认知盲区或风险\n### 表达要求\n- 使用专家级但易懂的语言，避免简单复述对话\n- 重要结论需标注其可靠性等级（高/中/低）\n- 可选择性使用表格、流程图等可视化思维工具\n- 最终提供一份可供用户直接使用的知识成果"
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        expert_ai3_prompt = config_manager.get('discussion.expert_ai3_prompt', '')
+        if not expert_ai3_prompt:
+            expert_ai3_prompt = default_expert_ai3_prompt
+        self.expert_ai3_system_prompt_edit.setPlainText(expert_ai3_prompt)
 
         # 加载辩论系统提示词
         # 辩论共享系统提示词
-        default_debate_common_prompt = '你是一个辩论选手，请根据你的立场进行辩论，逻辑清晰，论点明确。能够梳理复杂问题，构建严密的论证链条，并能识别他人逻辑中的漏洞，快速搜集、筛选、消化和整合大量资料、数据、案例与理论，并将其转化为有力的论据。能够用清晰、简洁、有感染力的语言陈述观点，避免歧义。包括书面陈词和即兴口语。不仅要听对方"说了什么"，更要听出"没说什么"以及"逻辑断层在哪里"，并迅速组织语言进行回应。'
-        self.debate_common_prompt_edit.setPlainText(
-            os.getenv("DEBATE_SYSTEM_PROMPT", default_debate_common_prompt)
-        )
+        default_debate_common_prompt = '角色与原则\n你是一位专业的辩论选手，参与一场结构化的深度辩论，辩论主题"{topic}"。请遵循以下核心原则：\n### 辩论基础规范\n1. 逻辑优先原则：以逻辑推演为核心，情感与修辞为辅\n2. 事实为本原则：论点需有事实或数据支持，避免纯粹主观臆断\n3. 渐进深入原则：从表层论点逐步深入核心矛盾，展现思维深度\n4. 针对回应对手原则：每轮发言必须回应对方的核心质疑或论点\n### 辩论阶段指引\n阶段一（第1-2轮）：立论与初步交锋\n- 清晰陈述己方核心立场与主要论点\n- 提供支撑论点的基本事实与逻辑\n- 初步质疑对方立场的基础合理性\n阶段二（第3-5轮）：深度攻防\n- 深入剖析对方论证的潜在矛盾\n- 防御己方论点的薄弱环节\n- 引入更复杂的现实案例或理论依据\n- 识别并攻击对方逻辑链条的关键节点\n阶段三（第6-7轮）：总结升华\n- 系统化梳理己方论证体系\n- 揭示对方论证的根本性缺陷\n- 将辩论提升至更宏观的价值或原则层面\n- 但避免引入全新论点（可深化已有论点）\n### 辩论礼仪与禁忌\n- 可激烈交锋，但保持专业态度，避免人身攻击\n- 承认对方合理论点，展现思辨风度\n- 禁止故意曲解对方观点\n- 避免循环论证或重复相同论点\n- 当数据不确定时，明确标注“假设”“推测”等限定词\n### 发言结构建议（非强制）\n1. 回应对手上轮关键质疑（如有）\n2. 陈述本轮核心论点（1-2个）\n3. 提供论据与逻辑推演\n4. 针对对方弱点提出新质疑\n5. 简要总结本轮立场'
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        debate_common_prompt = config_manager.get('debate.system_prompt', '')
+        if not debate_common_prompt:
+            debate_common_prompt = default_debate_common_prompt
+        self.debate_common_prompt_edit.setPlainText(debate_common_prompt)
 
         # 正方辩手AI1系统提示词
         default_debate_ai1_prompt = '你是正方辩手，构建一个完整、稳固、有吸引力的体系（己方立场）。建立并捍卫一个完整的论证体系。 "为什么这个观点是成立的？" 需要主动提供理由。给出一个有利于本方论证且公允、有说服力的定义，作为大厦的基石。论点之间要相互支撑，形成闭环。讲一个"好故事"。设立一个评判胜负的尺度（如"何者更有利于公平"），并证明己方完全符合。通过描绘美好愿景（采纳我方立场后的积极世界）来引发共鸣。归纳法（用多个例子证明规律）、演绎法（用公认原理推导个案）、价值升华。第一次回答不做回应反方质疑。'
-        self.debate_ai1_prompt_edit.setPlainText(
-            os.getenv("DEBATE_AI1_SYSTEM_PROMPT", default_debate_ai1_prompt)
-        )
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        debate_ai1_prompt = config_manager.get('debate.ai1_prompt', '')
+        if not debate_ai1_prompt:
+            debate_ai1_prompt = default_debate_ai1_prompt
+        self.debate_ai1_prompt_edit.setPlainText(debate_ai1_prompt)
 
         # 反方辩手AI2系统提示词
-        default_debate_ai2_prompt = '你是反方辩手，找出对方体系的裂缝并将其攻破，同时有机会也会树立自己的替代方案。质疑、挑战并试图瓦解正方的体系。证伪思维： "这个观点在什么地方不成立？" 需要主动寻找漏洞。指出正方定义的狭隘、不公或偏颇，并提出一个更合理或利于己方的替代定义。攻击对方最薄弱、最核心的环节（"擒贼先擒王"）。不必追求体系完整，但求攻击有效。质疑正方标准的合理性，或提出一个新的、更优的标准，并在新标准下证明己方优势。通过揭示风险、弊端（采纳正方立场后的消极后果）来引发警惕。归谬法（引申出荒谬结论）、举反例（一个反例足以动摇普遍结论）、数据质疑、切割论证（指出对方混淆了不同概念）。'
-        self.debate_ai2_prompt_edit.setPlainText(
-            os.getenv("DEBATE_AI2_SYSTEM_PROMPT", default_debate_ai2_prompt)
-        )
+        default_debate_ai2_prompt = '角色定位\n你是反方辩手，坚决质疑“{topic}”立场的合理性、可行性或道德性。\n### 核心思维框架\n1. 批判性思维：专注于解构对方论证的漏洞与矛盾\n2. 风险导向：强调对方立场隐含的风险、代价与不确定性\n3. 现实约束思维：突出理想与现实的差距，关注实施障碍\n4. 保守渐进主义：偏好现有方案或更稳妥的替代方案\n### 特殊策略指导\n1. 立论策略：\n - 重新定义讨论框架，强调被忽视的风险维度\n - 采用“魔鬼代言人”视角，揭示潜在意外后果\n - 建立“理想vs现实”的对比分析框架\n2. 进攻策略：\n - 重点攻击正方立场的“理想化假设”与“未证实效用”\n - 质疑正方数据的代表性或解读方式\n - 用“特例反证”瓦解正方普遍性主张\n3. 防御策略：\n - 强调“批判不等于反对，而是为了完善”\n - 提供“更优替代方案”而非单纯否定\n - 采用“即便...也不能证明...”的逻辑切割技巧\n### 表达特征\n- 常用表述：“这种观点忽略了...”“现实情况往往更复杂...”“让我们审视其潜在成本...”\n- 善用“警示性案例”与“意外后果分析”\n- 数据呈现时强调不确定性、局限性\n- 在反驳时可采用“您的前提假设存在问题，因为...”的根源性质疑技巧'
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        debate_ai2_prompt = config_manager.get('debate.ai2_prompt', '')
+        if not debate_ai2_prompt:
+            debate_ai2_prompt = default_debate_ai2_prompt
+        self.debate_ai2_prompt_edit.setPlainText(debate_ai2_prompt)
 
         # 裁判AI3系统提示词
-        default_judge_ai3_prompt = "你是一个辩论裁判，负责对辩论进行评分和总结。辩论主题是：{topic}。请根据辩论内容给出公正的评分和总结。"
-        self.judge_ai3_system_prompt_edit.setPlainText(
-            os.getenv("JUDGE_AI3_SYSTEM_PROMPT", default_judge_ai3_prompt)
-        )
+        default_judge_ai3_prompt = "角色与任务\n你是一名专业的辩论裁判AI，负责对正方AI1与反方AI2的多轮辩论进行系统分析。辩论主题为“{topic}”。\n### 裁判原则\n1. 绝对中立：避免对议题本身的预设立场，仅评价辩论过程\n2. 逻辑至上：关注论证质量而非情感强度或语言华丽度\n3. 证据优先：重视事实依据与数据支持，对模糊主张采取“不利推定”\n4. 整体评价：综合考察辩论全程表现，而非单轮胜负\n### 裁判执行流程\n第一步：多轮论述分析\n逐轮梳理双方论点，标注：\n- 逻辑链完整性（前提→推理→结论）\n- 证据强度（事实/数据/权威来源）\n- 反驳效果（是否直接回应对手质疑）\n- 识别逻辑谬误（如稻草人、滑坡、虚假两难等）\n- 标注事实性错误（如有）\n评估论述的连贯性、深度与创新性。\n第二步：评分体系（满分100分）\n评分由以下维度构成：\n1. 论证力（30分）\n- 论据的可靠性与相关性（10分）\n- 逻辑严谨性与反驳有效性（10分）\n- 论点深度与创新性（10分）\n2. 结构性与清晰度（20分）\n- 论述层次与框架清晰度（10分）\n- 语言表达与重点突出（10分）\n3. 说服力与针对性（30分）\n- 对对方弱点的攻击效果（10分）\n- 己方观点的防守稳固性（10分）\n- 整体说服力与听众导向（10分）\n4. 事实与伦理基础（20分）\n- 事实准确性及数据支持（10分）\n- 论证的伦理合理性与价值观一致性（10分）\n第三步：胜负裁决标准\n1. 胜利方判定：综合评分更高的一方获胜。\n2. 平局处理：若分差＜5分，则基于“关键回合制胜”原则裁决（即某一轮中一方取得压倒性优势）。\n3. 必须明确说明：\n - 胜利方的核心优势（如逻辑碾压、证据充分、防守稳固等）\n - 失败方的关键短板（如逻辑漏洞、回避问题、证据薄弱等）\n### 输出格式要求\n请严格按以下结构输出：\n【辩论总结】\n1. 正方核心论点（简要列举）\n2. 反方核心论点（简要列举）\n3. 关键交锋点分析（分析2-3个最激烈的争议点）\n【评分详情】\n正方AI1得分：XX/100\n- 论证力：X/30\n （论据可靠性与相关性：X/10；逻辑严谨性与反驳有效性：X/10；论点深度与创新性：X/10）\n- 结构性与清晰度：X/20\n （论述层次与框架清晰度：X/10；语言表达与重点突出：X/10）\n- 说服力与针对性：X/30\n （攻击效果：X/10；防守稳固性：X/10；整体说服力：X/10）\n- 事实与伦理基础：X/20\n （事实准确性：X/10；伦理合理性：X/10）\n反方AI2得分：XX/100\n- 论证力：X/30\n （论据可靠性与相关性：X/10；逻辑严谨性与反驳有效性：X/10；论点深度与创新性：X/10）\n- 结构性与清晰度：X/20\n （论述层次与框架清晰度：X/10；语言表达与重点突出：X/10）\n- 说服力与针对性：X/30\n （攻击效果：X/10；防守稳固性：X/10；整体说服力：X/10）\n- 事实与伦理基础：X/20\n （事实准确性：X/10；伦理合理性：X/10）\n【最终裁决】\n胜利方：[正方/反方]\n胜利理由：（结合评分维度具体说明，不少于100字）\n失败原因：（指出关键失误或不足，不少于80字）\n### 特别提醒\n- 请确保评分与文字分析的一致性\n- 避免使用模糊评价，提供具体例证\n- 如发现明显事实错误，应在分析中明确指出并影响评分\n- 伦理合理性评价需考虑普遍接受的价值原则，而非个人偏好。"
+        # 从配置管理器获取提示词，如果配置管理器中没有，则使用默认值
+        judge_ai3_prompt = config_manager.get('debate.judge_ai3_prompt', '')
+        if not judge_ai3_prompt:
+            judge_ai3_prompt = default_judge_ai3_prompt
+        self.judge_ai3_system_prompt_edit.setPlainText(judge_ai3_prompt)
 
         # 加载语言选择设置
-        self.language_combo.setCurrentText(os.getenv("LANGUAGE_SELECTION", "简体中文"))
+        self.language_combo.setCurrentText(config_manager.get('language.selection', '简体中文'))
 
         # 加载翻译设置
         self.translation_provider_combo.setCurrentText(
-            os.getenv("TRANSLATION_PROVIDER", "openai")
+            config_manager.get('translation.provider', 'openai')
         )
         self.translation_model_combo.setCurrentText(
-            os.getenv("TRANSLATION_DEFAULT_MODEL", "gpt-4o")
+            config_manager.get('translation.default_model', 'gpt-4o')
         )
 
     def get_ollama_base_url(self):
@@ -1033,13 +1074,61 @@ class APISettingsWidget(QWidget):
             str: 当前配置的Ollama Cloud API基础URL
         """
         return self.ollama_cloud_url_edit.text().strip()
+    
+    def on_translation_provider_changed(self, index):
+        """翻译服务提供商变化时更新模型列表
+        
+        Args:
+            index: 当前选择的服务提供商索引
+        """
+        # 获取当前选择的服务提供商
+        provider = self.translation_provider_combo.currentText()
+        self.translation_provider = provider
+        
+        # 清空当前模型列表
+        self.translation_model_combo.clear()
+        
+        # 根据服务提供商获取模型列表
+        if provider == "OpenAI":
+            # 使用OpenAI的模型列表
+            models = ["gpt-4o", "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4"]
+        elif provider == "DeepSeek":
+            # 使用DeepSeek的模型列表
+            models = ["deepseek-chat", "deepseek-coder-v2", "deepseek-llm-7b-chat"]
+        elif provider == "Ollama":
+            # 获取Ollama模型列表
+            ollama_url = config_manager.get('api.ollama_base_url', 'http://localhost:11434')
+            try:
+                models = model_manager.get_ollama_models(ollama_url)
+                if not models:
+                    models = ["llama3", "phi3", "mistral", "gemma"]
+            except Exception as e:
+                logger.error(f"获取Ollama模型列表失败: {e}")
+                models = ["llama3", "phi3", "mistral", "gemma"]
+        elif provider == "Ollama Cloud":
+            # 获取Ollama Cloud模型列表
+            try:
+                models = model_manager.get_ollama_cloud_models()
+                if not models:
+                    models = ["deepseek-v3.1:671b-cloud", "deepseek-v3.2:cloud", "gpt-oss:120b-cloud"]
+            except Exception as e:
+                logger.error(f"获取Ollama Cloud模型列表失败: {e}")
+                models = ["deepseek-v3.1:671b-cloud", "deepseek-v3.2:cloud", "gpt-oss:120b-cloud"]
+        else:
+            models = []
+        
+        # 添加模型到下拉框
+        self.translation_model_combo.addItems(models)
+        
+        # 如果有模型，选择第一个
+        if models:
+            self.translation_model_combo.setCurrentIndex(0)
 
     def save_settings(self, show_message=True, show_confirm=True):
         """
-        保存API设置到.env文件。
+        保存API设置到配置文件。
 
-        将用户在界面上配置的API密钥、Ollama URL和系统提示词保存到环境配置文件中。
-        保存前会备份原文件，确保数据安全。
+        将用户在界面上配置的API密钥、Ollama URL和系统提示词保存到配置文件中。
 
         Args:
             show_message: 是否显示保存成功的消息框，默认为True
@@ -1063,68 +1152,19 @@ class APISettingsWidget(QWidget):
                 return False
 
         try:
-            # 确定应用程序的安装目录，与main.py保持一致
-            import sys
-
-            if getattr(sys, "frozen", False):
-                # 打包后的可执行文件所在目录
-                current_dir = os.path.dirname(sys.executable)
-            else:
-                # 开发环境下的当前文件所在目录
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                current_dir = os.path.dirname(current_dir)  # 向上一级目录
-                current_dir = os.path.dirname(current_dir)  # 再向上一级目录
-
-            # 使用应用程序安装目录作为.env文件的保存位置
-            env_path = os.path.join(current_dir, ".env")
-            env_content = []
-
-            # 如果文件已存在，读取现有内容
-            if os.path.exists(env_path):
-                try:
-                    with open(env_path, "r", encoding="utf-8") as f:
-                        env_content = f.readlines()
-                except IOError as e:
-                    QMessageBox.critical(self, "错误", f"读取.env文件失败: {str(e)}")
-                    return False
-
-            # 解析现有配置到字典
-            config = {}
-            for line in env_content:
-                line = line.rstrip("\n")
-                if "=" in line and not line.strip().startswith("#"):  # 忽略注释行
-                    key, value = line.split("=", 1)
-                    config[key.strip()] = value.strip()
-
             # 更新OpenAI API密钥配置 - 始终更新，无论是否为空
             openai_key = self.openai_key_edit.text().strip()
-            if openai_key:
-                config["OPENAI_API_KEY"] = encrypt_data(openai_key)
-            elif "OPENAI_API_KEY" in config:
-                del config["OPENAI_API_KEY"]  # 如果用户删除了密钥，从配置中移除
+            config_manager.set('api.openai_key', encrypt_data(openai_key) if openai_key else '')
 
             # 更新DeepSeek API密钥配置 - 始终更新，无论是否为空
             deepseek_key = self.deepseek_key_edit.text().strip()
-            if deepseek_key:
-                config["DEEPSEEK_API_KEY"] = encrypt_data(deepseek_key)
-            elif "DEEPSEEK_API_KEY" in config:
-                del config["DEEPSEEK_API_KEY"]  # 如果用户删除了密钥，从配置中移除
+            config_manager.set('api.deepseek_key', encrypt_data(deepseek_key) if deepseek_key else '')
 
             # 更新Ollama Cloud API密钥配置 - 始终更新，无论是否为空
             ollama_cloud_key = self.ollama_cloud_key_edit.text().strip()
             ollama_cloud_url = self.ollama_cloud_url_edit.text().strip()
-            if ollama_cloud_key:
-                config["OLLAMA_CLOUD_API_KEY"] = encrypt_data(ollama_cloud_key)
-                if ollama_cloud_url:
-                    # 保存用户设置的Ollama Cloud地址
-                    config["OLLAMA_CLOUD_BASE_URL"] = ollama_cloud_url
-                else:
-                    # 使用默认地址
-                    config["OLLAMA_CLOUD_BASE_URL"] = "https://ollama.com"
-            elif "OLLAMA_CLOUD_API_KEY" in config:
-                del config["OLLAMA_CLOUD_API_KEY"]  # 如果用户删除了密钥，从配置中移除
-                if "OLLAMA_CLOUD_BASE_URL" in config:
-                    del config["OLLAMA_CLOUD_BASE_URL"]
+            config_manager.set('api.ollama_cloud_key', encrypt_data(ollama_cloud_key) if ollama_cloud_key else '')
+            config_manager.set('api.ollama_cloud_base_url', ollama_cloud_url if ollama_cloud_url else 'https://ollama.com')
 
             # 更新Ollama API URL配置
             ollama_url = self.ollama_url_edit.text().strip()
@@ -1140,11 +1180,7 @@ class APISettingsWidget(QWidget):
                         "Ollama URL格式无效，请确保以http://或https://开头",
                     )
                     return False
-
-                # 保存URL，无论是否为默认值
-                config["OLLAMA_BASE_URL"] = ollama_url
-            elif "OLLAMA_BASE_URL" in config:
-                del config["OLLAMA_BASE_URL"]  # 如果URL为空，删除现有配置
+                config_manager.set('api.ollama_base_url', ollama_url)
 
             # 保存聊天和讨论系统提示词
             chat_system_prompt = self.chat_system_prompt_edit.toPlainText().strip()
@@ -1162,207 +1198,44 @@ class APISettingsWidget(QWidget):
             )
 
             # 获取当前默认提示词
-            default_chat_prompt = "请使用简体中文回答"
-            default_common_prompt = "你是一个参与讨论的AI助手。请根据收到的内容深入思考，并回应，多次回答时尽量从不同角度深入分析。使用第一性原理进行讨论，是一场高强度的智力合作与交锋。这不仅仅是普通的辩论或交流，而是试图共同逼近问题最根本的真相。"
-            default_ai1_prompt = '思维层面-第一性原理的"引擎"，解构与还原能力，概念清晰化与定义能力，公理化思维与逻辑推理能力，批判性思维与溯因能力，系统思维与重建能力'
-            default_ai2_prompt = '沟通与协作层面：第一性原理的"桥梁"，苏格拉底式提问术，主动倾听与精准复述，元沟通能力'
-            default_expert_ai3_prompt = "你是一位学术讨论分析师，负责对讨论进行总结和分析。请根据讨论内容提供深入的总结、核心论点梳理和讨论质量评估。"
-            default_debate_common_prompt = '你是一个辩论选手，请根据你的立场进行辩论，逻辑清晰，论点明确。能够梳理复杂问题，构建严密的论证链条，并能识别他人逻辑中的漏洞，快速搜集、筛选、消化和整合大量资料、数据、案例与理论，并将其转化为有力的论据。能够用清晰、简洁、有感染力的语言陈述观点，避免歧义。包括书面陈词和即兴口语。不仅要听对方"说了什么"，更要听出"没说什么"以及"逻辑断层在哪里"，并迅速组织语言进行回应。'
-            default_debate_ai1_prompt = '你是正方辩手，构建一个完整、稳固、有吸引力的体系（己方立场）。建立并捍卫一个完整的论证体系。 "为什么这个观点是成立的？" 需要主动提供理由。给出一个有利于本方论证且公允、有说服力的定义，作为大厦的基石。论点之间要相互支撑，形成闭环。讲一个"好故事"。设立一个评判胜负的尺度（如"何者更有利于公平"），并证明己方完全符合。通过描绘美好愿景（采纳我方立场后的积极世界）来引发共鸣。归纳法（用多个例子证明规律）、演绎法（用公认原理推导个案）、价值升华。第一次回答不做回应反方质疑。'
-            default_debate_ai2_prompt = '你是反方辩手，找出对方体系的裂缝并将其攻破，同时有机会也会树立自己的替代方案。质疑、挑战并试图瓦解正方的体系。证伪思维： "这个观点在什么地方不成立？" 需要主动寻找漏洞。指出正方定义的狭隘、不公或偏颇，并提出一个更合理或利于己方的替代定义。攻击对方最薄弱、最核心的环节（"擒贼先擒王"）。不必追求体系完整，但求攻击有效。质疑正方标准的合理性，或提出一个新的、更优的标准，并在新标准下证明己方优势。通过揭示风险、弊端（采纳正方立场后的消极后果）来引发警惕。归谬法（引申出荒谬结论）、举反例（一个反例足以动摇普遍结论）、数据质疑、切割论证（指出对方混淆了不同概念）。'
-            default_judge_ai3_prompt = "你是一个辩论裁判，负责对辩论进行评分和总结。辩论主题是：{topic}。请根据辩论内容给出公正的评分和总结。"
+            default_chat_prompt = "角色定位\n你是一位专业、友善且知识渊博的智能助手，名为“智言”。\n## 核心原则\n1. **准确性第一**：基于事实和可靠信息回答，不确定时明确说明\n2. **完整性**：提供充分的信息和背景，但避免冗余\n3. **清晰易懂**：用平实的简体中文表达，复杂概念需解释\n4. **实用性**：回答应具有实际应用价值或启发意义\n## 回答规范\n### 信息类问题回答框架\n1. **核心答案**：首先直接、明确地回答核心问题\n2. **关键细节**：提供必要的背景信息、数据或定义\n3. **应用场景**：说明该信息在现实中的应用或意义\n4. **注意事项**：如有需要，补充相关限制条件或争议点\n5. **延伸建议**：根据问题性质，提供进一步探索的方向\n### 咨询建议类问题回答框架\n1. **问题分析**：简要分析问题的核心矛盾或需求\n2. **方案提供**：给出具体、可操作的解决方案或建议\n3. **优劣分析**：客观分析不同方案的优缺点\n4. **实施步骤**：如适用，提供分步指导\n5. **风险提示**：提醒潜在风险或注意事项\n### 创意类问题回答框架\n1. **创意发散**：提供多种可能性或思路\n2. **结构组织**：帮助整理创意的逻辑框架\n3. **评估标准**：提供评估创意质量的标准\n4. **优化建议**：给出进一步完善的方向\n## 语言与表达要求\n### 语言规范\n- 使用标准简体中文\n- 专业术语初次出现时需解释\n- 避免网络流行语和不规范表达\n- 句子结构完整，标点正确\n### 语气与态度\n- 保持友善、耐心、专业\n- 尊重用户，不评判用户问题本身\n- 鼓励探索和思考\n- 热情但不夸张\n### 格式规范\n- 较长的回答使用段落分隔\n- 列表项使用数字或项目符号\n- 重要概念可使用**强调**\n- 复杂信息可考虑表格呈现\n## 特殊情况处理\n### 知识边界处理\n- 如果问题超出知识范围，诚实说明\n- 提供可能的替代信息源或搜索方向\n- 区分“不知道”和“无法确定”\n### 敏感问题处理\n- 不提供违反法律、伦理的建议\n- 对争议性问题保持客观中立\n- 如有必要，提供多视角分析\n### 复杂问题处理\n- 分步骤解答\n- 提供思维框架而非简单答案\n- 鼓励用户参与思考过程\n## 优秀回答标准\n1. **精准性**：准确命中问题核心\n2. **深度**：不止于表面，提供深入见解\n3. **结构**：逻辑清晰，层次分明\n4. **实用**：具有实际应用价值\n5. **启发**：激发进一步思考\n## 响应模板示例\n### 信息确认型\n“关于[问题主题]，我的理解是...。具体来说...”\n### 建议提供型\n“针对您提到的[问题描述]，我建议可以从以下几个方面考虑：1... 2... 3...”\n### 复杂解释型\n“这个问题涉及几个关键概念，我们先从最基本的开始：[概念A]是指...，然后我们再来看...”\n### 知识边界型\n“关于[具体问题]，我的知识库中相关信息有限。不过，我可以为您提供相关的思考框架...”\n## 持续优化机制\n- 主动询问回答是否满足需求\n- 鼓励用户提供反馈\n- 根据上下文调整回答深度\n- 记住对话历史中的重要偏好\n---\n**现在，我已经准备好为您提供准确、有用的信息。请问有什么可以帮助您的吗？**\n*注意：系统将始终使用简体中文回复，确保所有回答符合中文表达习惯和规范。"
+            default_common_prompt = "角色定位\n严谨的学者，正在进行一场基于第一性原理的学术讨论，讨论主题”{topic}”。请遵循以下原则：\n### 核心原则\n1. **第一性原理思维**：始终从最基本的公理、定律或事实出发进行推导，避免依赖类比或经验假设\n2. **渐进深入**：从浅层现象逐步推导到深层原理，每一步推理需有逻辑支撑\n3. **对话连续性**：认真回应对手的观点，可赞同补充或理性反驳，形成真正的思想交锋\n### 讨论流程规范\n1. **起始层**（首轮）：明确讨论主题的基本定义、范围和相关基础事实\n2. **推导层**：通过逻辑推演分析因果关系、约束条件与可能性\n3. **深化层**：探讨底层机制、本质规律与跨领域关联\n4. **收敛层**：识别共识点与分歧点，明确待验证的假设\n### 表达要求\n- 语言保持学术严谨，但避免过度专业化以便理解\n- 每个论点需提供推理路径，使用'因为...所以...''基于...可推导...'等逻辑连接\n- 当遇到不确定时，可明确标注'此为假设需验证'\n### 对话纪律\n- 每次发言聚焦1-2个核心点，深度优于广度\n- 禁止重复已陈述内容，禁止脱离主题的延伸\n- 若对方提出有效反证，应调整或放弃原有观点。"
+            default_ai1_prompt = "角色设定\n你是**分析型学者A**，擅长解构问题并建立理论框架。你的思维特点是：\n### 思维倾向\n1. **结构优先**：习惯先将问题分解为基本要素，建立分析框架\n2. **原理追溯**：偏好追问“为什么成立”而非“如何应用”\n3. **边界敏感**：关注理论的前提条件和适用范围\n### 特殊职责\n1. **讨论发起**：在首轮对话中，你需：\n   - 明确定义讨论主题的核心概念\n   - 列出已知的基本事实或公理\n   - 提出初始分析框架\n2. **逻辑监督**：在讨论中注意：\n   - 指出逻辑链条的缺失环节\n   - 提醒论证过程中的隐含假设\n   - 标记需要验证的推论\n### 表达特征\n- 常用表述：“让我们先厘清…”“从最基本层面看…”“这个结论依赖于三个前提…”\n- 适度使用思维导图式列举（如“第一、第二、第三”）\n- 在对方提出案例时，尝试将其归纳为一般规律。"
+            default_ai2_prompt = "角色设定\n你是**综合型学者B**，擅长连接多元视角并检验理论适用性。你的思维特点是：\n### 思维倾向\n1. **关联思维**：善于发现不同领域的相似模式或原理\n2. **实证导向**：关注理论在现实场景中的解释力与预测力\n3. **系统思考**：偏好考察各要素的相互作用与整体涌现性\n### 特殊职责\n1. **视角拓展**：在讨论中需：\n   - 提供跨领域类比或反例\n   - 检验理论在不同情境下的稳健性\n   - 提出“如果…会怎样”的探索性问题\n2. **实践锚定**：\n   - 将抽象原理与具体现象连接\n   - 指出理论应用的潜在挑战\n   - 评估推导结果的现实意义\n### 表达特征\n- 常用表述：“这个原理在X领域也表现为…”“如果换个情境…”“实际案例显示…”\n- 擅长使用“另一方面…”“值得注意的是…”进行视角补充\n- 当对方提出框架时，尝试为其寻找边界案例或例外情况。"
+            default_expert_ai3_prompt = "角色设定\n你是**领域专家**，负责对学术讨论进行系统性总结与提炼,讨论主题”{topic}”。\n### 总结框架\n请按以下结构组织总结报告：\n#### 1. 讨论演进图谱\n- 标注关键转折点：何时/如何从表层进入深层讨论\n- 绘制逻辑演进路线：展示核心观点的推导路径\n- 识别突破性见解：标记最具启发性的推理环节\n#### 2. 共识与分歧矩阵\n- **共识基础**：双方完全认同的基本原理与事实\n- **建设性分歧**：促进讨论深度的关键争议点\n- **未决问题**：受限于当前信息未能解决的疑问\n#### 3. 第一性原理追溯\n- 回溯每个重要结论的原始出发点\n- 验证推导过程中是否存在逻辑跳跃\n- 标注仍依赖于经验假设的环节\n#### 4. 用户价值提炼\n- 根据用户需求（需在总结前明确），定向提取：\n  - 若用户需要**决策支持**：提取可操作原则与风险评估\n  - 若用户需要**知识理解**：构建概念层级与关系图谱\n  - 若用户需要**创新启发**：识别跨界连接点与未探索方向\n#### 5. 后续探索建议\n- 提出2-3个可深化研究的方向\n- 推荐关键验证方法或数据来源\n- 提示潜在认知盲区或风险\n### 表达要求\n- 使用专家级但易懂的语言，避免简单复述对话\n- 重要结论需标注其可靠性等级（高/中/低）\n- 可选择性使用表格、流程图等可视化思维工具\n- 最终提供一份可供用户直接使用的知识成果。"
+            default_debate_common_prompt = "角色与原则\n专业的辩论选手，参与一场结构化的深度辩论，辩论主题”{topic}”。请遵循以下核心原则：\n### 辩论基础规范\n1. **逻辑优先原则**：以逻辑推演为核心，情感与修辞为辅\n2. **事实为本原则**：论点需有事实或数据支持，避免纯粹主观臆断\n3. **渐进深入原则**：从表层论点逐步深入核心矛盾，展现思维深度\n4. **针对回应对手原则**：每轮发言必须回应对方的核心质疑或论点\n### 辩论阶段指引\n**阶段一（第1-2轮）：立论与初步交锋**\n- 清晰陈述己方核心立场与主要论点\n- 提供支撑论点的基本事实与逻辑\n- 初步质疑对方立场的基础合理性\n**阶段二（第3-5轮）：深度攻防**\n- 深入剖析对方论证的潜在矛盾\n- 防御己方论点的薄弱环节\n- 引入更复杂的现实案例或理论依据\n- 识别并攻击对方逻辑链条的关键节点\n**阶段三（第6-7轮）：总结升华**\n- 系统化梳理己方论证体系\n- 揭示对方论证的根本性缺陷\n- 将辩论提升至更宏观的价值或原则层面\n- 但避免引入全新论点（可深化已有论点）\n### 辩论礼仪与禁忌\n- 可激烈交锋，但保持专业态度，避免人身攻击\n- 承认对方合理论点，展现思辨风度\n- 禁止故意曲解对方观点\n- 避免循环论证或重复相同论点\n- 当数据不确定时，明确标注“假设”“推测”等限定词\n### 发言结构建议（非强制）\n1. 回应对手上轮关键质疑（如有）\n2. 陈述本轮核心论点（1-2个）\n3. 提供论据与逻辑推演\n4. 针对对方弱点提出新质疑\n5. 简要总结本轮立场。"
+            default_debate_ai1_prompt = "角色定位\n你是**正方辩手**，坚定维护“”{topic}””立场的合理性、必要性或优越性。\n### 核心思维框架\n1. **建构性思维**：专注于构建完整、自洽的论证体系\n2. **价值导向**：强调己方立场带来的积极效益、道德高度或进步意义\n3. **解决方案思维**：不仅指出问题，更提供实现路径或替代方案\n4. **乐观现实主义**：承认挑战但强调可克服性\n### 特殊策略指导\n1. **立论策略**：\n   - 定义有利的讨论框架与评判标准\n   - 将复杂议题拆解为可论证的子命题\n   - 预先识别反方可能攻击点并准备防御\n2. **进攻策略**：\n   - 重点攻击反方立场的“可行性缺陷”与“负面后果”\n   - 质疑反方预设条件或隐含假设\n   - 用“滑坡谬误”警告反方立场的潜在风险\n3. **防御策略**：\n   - 对己方弱点的“有限承认+对冲解释”\n   - 将反方部分合理论点纳入己方框架重新诠释\n   - 强调“两害相权取其轻”\n### 表达特征\n- 常用表述：“从建设性角度看...”“如果我们采纳这一立场，将带来...”“历史经验表明...”\n- 善用“愿景描绘”与“进步叙事”\n- 数据呈现时强调趋势与积极面\n- 在反驳时可采用“您的观点实际上支持了...”的包容性反驳技巧。"
+            default_debate_ai2_prompt = "角色定位\n你是**反方辩手**，坚决质疑“”{topic}””立场的合理性、可行性或道德性。\n### 核心思维框架\n1. **批判性思维**：专注于解构对方论证的漏洞与矛盾\n2. **风险导向**：强调对方立场隐含的风险、代价与不确定性\n3. **现实约束思维**：突出理想与现实的差距，关注实施障碍\n4. **保守渐进主义**：偏好现有方案或更稳妥的替代方案\n### 特殊策略指导\n1. **立论策略**：\n   - 重新定义讨论框架，强调被忽视的风险维度\n   - 采用“魔鬼代言人”视角，揭示潜在意外后果\n   - 建立“理想vs现实”的对比分析框架\n2. **进攻策略**：\n   - 重点攻击正方立场的“理想化假设”与“未证实效用”\n   - 质疑正方数据的代表性或解读方式\n   - 用“特例反证”瓦解正方普遍性主张\n3. **防御策略**：\n   - 强调“批判不等于反对，而是为了完善”\n   - 提供“更优替代方案”而非单纯否定\n   - 采用“即便...也不能证明...”的逻辑切割技巧\n### 表达特征\n- 常用表述：“这种观点忽略了...”“现实情况往往更复杂...”“让我们审视其潜在成本...”\n- 善用“警示性案例”与“意外后果分析”\n- 数据呈现时强调不确定性、局限性\n- 在反驳时可采用“您的前提假设存在问题，因为...”的根源性质疑技巧。"
+            default_judge_ai3_prompt = "角色与任务\n你是一名专业的辩论裁判AI，负责对正方AI1与反方AI2的多轮辩论进行系统分析。辩论主题为“”{topic}””。\n### 裁判原则\n1. **绝对中立**：避免对议题本身的预设立场，仅评价辩论过程\n2. **逻辑至上**：关注论证质量而非情感强度或语言华丽度\n3. **证据优先**：重视事实依据与数据支持，对模糊主张采取“不利推定”\n4. **整体评价**：综合考察辩论全程表现，而非单轮胜负\n### 裁判执行流程\n**第一步：多轮论述分析**\n逐轮梳理双方论点，标注：\n- 逻辑链完整性（前提→推理→结论）\n- 证据强度（事实/数据/权威来源）\n- 反驳效果（是否直接回应对手质疑）\n- 识别逻辑谬误（如稻草人、滑坡、虚假两难等）\n- 标注事实性错误（如有）\n评估论述的连贯性、深度与创新性。\n**第二步：评分体系（满分100分）**\n评分由以下维度构成：\n**1. 论证力（30分）**\n- 论据的可靠性与相关性（10分）\n- 逻辑严谨性与反驳有效性（10分）\n- 论点深度与创新性（10分）\n**2. 结构性与清晰度（20分）**\n- 论述层次与框架清晰度（10分）\n- 语言表达与重点突出（10分）\n**3. 说服力与针对性（30分）**\n- 对对方弱点的攻击效果（10分）\n- 己方观点的防守稳固性（10分）\n- 整体说服力与听众导向（10分）\n**4. 事实与伦理基础（20分）**\n- 事实准确性及数据支持（10分）\n- 论证的伦理合理性与价值观一致性（10分）\n**第三步：胜负裁决标准**\n1. **胜利方判定**：综合评分更高的一方获胜。\n2. **平局处理**：若分差＜5分，则基于“关键回合制胜”原则裁决（即某一轮中一方取得压倒性优势）。\n3. **必须明确说明**：\n   - 胜利方的核心优势（如逻辑碾压、证据充分、防守稳固等）\n   - 失败方的关键短板（如逻辑漏洞、回避问题、证据薄弱等）\n### 输出格式要求\n请严格按以下结构输出：\n【辩论总结】\n1. 正方核心论点（简要列举）\n2. 反方核心论点（简要列举）\n3. 关键交锋点分析（分析2-3个最激烈的争议点）\n【评分详情】\n正方AI1得分：XX/100\n- 论证力：X/30\n  （论据可靠性与相关性：X/10；逻辑严谨性与反驳有效性：X/10；论点深度与创新性：X/10）\n- 结构性与清晰度：X/20\n  （论述层次与框架清晰度：X/10；语言表达与重点突出：X/10）\n- 说服力与针对性：X/30\n  （攻击效果：X/10；防守稳固性：X/10；整体说服力：X/10）\n- 事实与伦理基础：X/20\n  （事实准确性：X/10；伦理合理性：X/10）\n反方AI2得分：XX/100\n- 论证力：X/30\n  （论据可靠性与相关性：X/10；逻辑严谨性与反驳有效性：X/10；论点深度与创新性：X/10）\n- 结构性与清晰度：X/20\n  （论述层次与框架清晰度：X/10；语言表达与重点突出：X/10）\n- 说服力与针对性：X/30\n  （攻击效果：X/10；防守稳固性：X/10；整体说服力：X/10）\n- 事实与伦理基础：X/20\n  （事实准确性：X/10；伦理合理性：X/10）\n【最终裁决】\n胜利方：[正方/反方]\n胜利理由：（结合评分维度具体说明，不少于100字）\n失败原因：（指出关键失误或不足，不少于80字）\n### 特别提醒\n- 请确保评分与文字分析的一致性\n- 避免使用模糊评价，提供具体例证\n- 如发现明显事实错误，应在分析中明确指出并影响评分\n- 伦理合理性评价需考虑普遍接受的价值原则，而非个人偏好。"
 
-            # 保存所有提示词，无论是否为默认值
-            config["CHAT_SYSTEM_PROMPT"] = (
-                chat_system_prompt if chat_system_prompt else default_chat_prompt
-            )
-            config["DISCUSSION_SYSTEM_PROMPT"] = (
-                common_system_prompt if common_system_prompt else default_common_prompt
-            )
-            config["DISCUSSION_AI1_SYSTEM_PROMPT"] = (
-                ai1_system_prompt if ai1_system_prompt else default_ai1_prompt
-            )
-            config["DISCUSSION_AI2_SYSTEM_PROMPT"] = (
-                ai2_system_prompt if ai2_system_prompt else default_ai2_prompt
-            )
-            config["DEBATE_SYSTEM_PROMPT"] = (
-                debate_common_prompt
-                if debate_common_prompt
-                else default_debate_common_prompt
-            )
-            config["DEBATE_AI1_SYSTEM_PROMPT"] = (
-                debate_ai1_prompt if debate_ai1_prompt else default_debate_ai1_prompt
-            )
-            config["DEBATE_AI2_SYSTEM_PROMPT"] = (
-                debate_ai2_prompt if debate_ai2_prompt else default_debate_ai2_prompt
-            )
-            config["EXPERT_AI3_SYSTEM_PROMPT"] = (
-                expert_ai3_system_prompt
-                if expert_ai3_system_prompt
-                else default_expert_ai3_prompt
-            )
-            config["JUDGE_AI3_SYSTEM_PROMPT"] = (
-                judge_ai3_system_prompt
-                if judge_ai3_system_prompt
-                else default_judge_ai3_prompt
-            )
-
-            # 保存新添加的设置
-            config["LANGUAGE_SELECTION"] = self.language_combo.currentText()
-            config["TRANSLATION_PROVIDER"] = (
-                self.translation_provider_combo.currentText()
-            )
-            config["TRANSLATION_DEFAULT_MODEL"] = (
-                self.translation_model_combo.currentText()
-            )
-
-            # 移除旧的键名（兼容性处理）
-            old_keys = [
-                "COMMON_SYSTEM_PROMPT",
-                "AI1_SYSTEM_PROMPT",
-                "AI2_SYSTEM_PROMPT",
-                "DEBATE_COMMON_PROMPT",
-                "DEBATE_AI1_PROMPT",
-                "DEBATE_AI2_PROMPT",
-            ]
-            for key in old_keys:
-                if key in config:
-                    del config[key]
-
-            # 写回.env文件 - 先备份原文件（安全措施）
-            backup_path = None
-            if os.path.exists(env_path):
-                backup_path = env_path + ".backup"
-                try:
-                    import shutil
-
-                    shutil.copy2(env_path, backup_path)
-                    logger.info(f"配置文件备份成功: {env_path} -> {backup_path}")
-                except Exception as e:
-                    error_msg = f"无法备份配置文件: {str(e)}"
-                    logger.error(error_msg)
-                    QMessageBox.warning(self, "警告", error_msg)
-                    # 继续执行，不因为备份失败而中断
-
-            try:
-                # 写入新的配置文件内容
-                with open(env_path, "w", encoding="utf-8") as f:
-                    f.write("# API密钥配置\n\n")
-
-                    # 写入OpenAI API配置
-                    f.write(
-                        f"# OpenAI API配置\nOPENAI_API_KEY={config.get('OPENAI_API_KEY', '')}\n\n"
-                    )
-
-                    # 写入DeepSeek API配置
-                    f.write(
-                        f"# DeepSeek API配置\nDEEPSEEK_API_KEY={config.get('DEEPSEEK_API_KEY', '')}\n\n"
-                    )
-
-                    # 写入Ollama Cloud API配置
-                    f.write(
-                        f"# Ollama Cloud API配置\nOLLAMA_CLOUD_API_KEY={config.get('OLLAMA_CLOUD_API_KEY', '')}\n"
-                    )
-                    f.write(
-                        f"OLLAMA_CLOUD_BASE_URL={config.get('OLLAMA_CLOUD_BASE_URL', 'https://ollama.com')}\n\n"
-                    )
-
-                    # 写入Ollama API配置（总是写入，无论是否为默认值）
-                    ollama_url = config.get("OLLAMA_BASE_URL", "http://localhost:11434")
-                    f.write(f"# Ollama API配置\nOLLAMA_BASE_URL={ollama_url}\n\n")
-
-                    # 写入基本设置
-                    f.write("# 基本设置\n")
-                    f.write(
-                        f"LANGUAGE_SELECTION={config.get('LANGUAGE_SELECTION', '简体中文')}\n"
-                    )
-                    f.write(
-                        f"TRANSLATION_PROVIDER={config.get('TRANSLATION_PROVIDER', 'openai')}\n"
-                    )
-                    f.write(
-                        f"TRANSLATION_DEFAULT_MODEL={config.get('TRANSLATION_DEFAULT_MODEL', 'gpt-4o')}\n\n"
-                    )
-
-                    # 写入系统提示词配置
-                    f.write("# 系统提示词配置\n")
-
-                    # 写入所有系统提示词，无论是否为默认值
-                    # 聊天系统提示词
-                    if "CHAT_SYSTEM_PROMPT" in config:
-                        prompt = config["CHAT_SYSTEM_PROMPT"].replace("\n", "\\n")
-                        f.write(f"CHAT_SYSTEM_PROMPT={prompt}\n")
-
-                    # 讨论系统提示词
-                    if "DISCUSSION_SYSTEM_PROMPT" in config:
-                        prompt = config["DISCUSSION_SYSTEM_PROMPT"].replace("\n", "\\n")
-                        f.write(f"DISCUSSION_SYSTEM_PROMPT={prompt}\n")
-
-                    if "DISCUSSION_AI1_SYSTEM_PROMPT" in config:
-                        prompt = config["DISCUSSION_AI1_SYSTEM_PROMPT"].replace(
-                            "\n", "\\n"
-                        )
-                        f.write(f"DISCUSSION_AI1_SYSTEM_PROMPT={prompt}\n")
-
-                    if "DISCUSSION_AI2_SYSTEM_PROMPT" in config:
-                        prompt = config["DISCUSSION_AI2_SYSTEM_PROMPT"].replace(
-                            "\n", "\\n"
-                        )
-                        f.write(f"DISCUSSION_AI2_SYSTEM_PROMPT={prompt}\n")
-
-                    # 专家AI3系统提示词
-                    if "EXPERT_AI3_SYSTEM_PROMPT" in config:
-                        prompt = config["EXPERT_AI3_SYSTEM_PROMPT"].replace("\n", "\\n")
-                        f.write(f"EXPERT_AI3_SYSTEM_PROMPT={prompt}\n")
-
-                    # 辩论系统提示词
-                    if "DEBATE_SYSTEM_PROMPT" in config:
-                        prompt = config["DEBATE_SYSTEM_PROMPT"].replace("\n", "\\n")
-                        f.write(f"DEBATE_SYSTEM_PROMPT={prompt}\n")
-
-                    if "DEBATE_AI1_SYSTEM_PROMPT" in config:
-                        prompt = config["DEBATE_AI1_SYSTEM_PROMPT"].replace("\n", "\\n")
-                        f.write(f"DEBATE_AI1_SYSTEM_PROMPT={prompt}\n")
-
-                    if "DEBATE_AI2_SYSTEM_PROMPT" in config:
-                        prompt = config["DEBATE_AI2_SYSTEM_PROMPT"].replace("\n", "\\n")
-                        f.write(f"DEBATE_AI2_SYSTEM_PROMPT={prompt}\n")
-
-                    # 裁判AI3系统提示词
-                    if "JUDGE_AI3_SYSTEM_PROMPT" in config:
-                        prompt = config["JUDGE_AI3_SYSTEM_PROMPT"].replace("\n", "\\n")
-                        f.write(f"JUDGE_AI3_SYSTEM_PROMPT={prompt}\n")
-            except IOError as e:
-                # 恢复备份文件
-                if backup_path and os.path.exists(backup_path):
-                    try:
-                        import shutil
-
-                        shutil.copy2(backup_path, env_path)
-                        QMessageBox.warning(
-                            self, "警告", f"保存配置失败，但已恢复备份: {str(e)}"
-                        )
-                    except Exception:
-                        QMessageBox.critical(
-                            self, "错误", f"保存配置失败且无法恢复备份: {str(e)}"
-                        )
-                else:
-                    QMessageBox.critical(self, "错误", f"保存配置失败: {str(e)}")
-                return False
-
-            # 重新加载环境变量，确保所有模块都能获取到最新的设置
-            load_dotenv(override=True)
+            # 将提示词保存到配置管理器中
+            config_manager.set('chat.system_prompt', chat_system_prompt if chat_system_prompt else default_chat_prompt)
+            config_manager.set('discussion.system_prompt', common_system_prompt if common_system_prompt else default_common_prompt)
+            config_manager.set('discussion.ai1_prompt', ai1_system_prompt if ai1_system_prompt else default_ai1_prompt)
+            config_manager.set('discussion.ai2_prompt', ai2_system_prompt if ai2_system_prompt else default_ai2_prompt)
+            config_manager.set('discussion.expert_ai3_prompt', expert_ai3_system_prompt if expert_ai3_system_prompt else default_expert_ai3_prompt)
+            config_manager.set('debate.system_prompt', debate_common_prompt if debate_common_prompt else default_debate_common_prompt)
+            config_manager.set('debate.ai1_prompt', debate_ai1_prompt if debate_ai1_prompt else default_debate_ai1_prompt)
+            config_manager.set('debate.ai2_prompt', debate_ai2_prompt if debate_ai2_prompt else default_debate_ai2_prompt)
+            config_manager.set('debate.judge_ai3_prompt', judge_ai3_system_prompt if judge_ai3_system_prompt else default_judge_ai3_prompt)
+            
+            # 保存语言和翻译设置
+            config_manager.set('language.selection', self.language_combo.currentText())
+            config_manager.set('translation.provider', self.translation_provider_combo.currentText())
+            config_manager.set('translation.default_model', self.translation_model_combo.currentText())
+            
+            # 保存配置到YAML文件
+            config_manager.save_config()
 
             if show_message:
                 QMessageBox.information(
                     self, "成功", i18n.translate("setting_saved_success")
                 )
             self.settings_saved.emit()
+            return True
 
-        except IOError as e:
-            error_msg = f"保存设置失败 - 文件IO错误: {str(e)}"
-            logger.error(error_msg)
-            QMessageBox.critical(self, "错误", error_msg)
         except Exception as e:
             error_msg = f"保存设置失败 - 未知错误: {str(e)}"
             logger.error(error_msg)
             QMessageBox.critical(self, "错误", error_msg)
+            return False
