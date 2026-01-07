@@ -1,13 +1,20 @@
 # -*- coding: utf-8 -*-
 """
 聊天历史管理模块
-负责聊天历史的保存、加载和导出功能
+负责聊天历史的保存、加载、分页获取和导出功能
+
+该模块实现了聊天历史的完整生命周期管理，包括：
+1. 异步加载聊天历史，避免阻塞主线程
+2. 分页获取历史记录，优化内存使用
+3. 缓存机制，减少文件I/O操作
+4. 历史记录的添加、删除、清空等操作
+5. 聊天历史导出功能
 """
 
 import json
 import os
 from datetime import datetime
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable, Any, Literal, TypedDict
 from .logger_config import get_logger
 from .i18n_manager import i18n
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -16,14 +23,43 @@ from PyQt5.QtCore import QThread, pyqtSignal
 logger = get_logger(__name__)
 
 
+# 定义聊天历史记录的类型
+class ChatHistoryItem(TypedDict):
+    """聊天历史记录项的类型定义
+    
+    每个聊天历史记录包含以下字段：
+    - topic: 聊天主题
+    - model1: 模型1名称
+    - model2: 模型2名称（可选，单聊时为None）
+    - api1: 模型1使用的API提供商
+    - api2: 模型2使用的API提供商
+    - rounds: 聊天轮数
+    - chat_content: 聊天内容
+    - start_time: 开始时间
+    - end_time: 结束时间
+    """
+    topic: str
+    model1: str
+    model2: Optional[str]
+    api1: str
+    api2: str
+    rounds: int
+    chat_content: str
+    start_time: str
+    end_time: str
+
+
 class ChatHistoryLoadWorker(QThread):
     """
     异步加载聊天历史的工作线程
+    
+    该类用于在后台线程中加载聊天历史，避免阻塞主线程，
+    提高应用程序的响应性能。
     """
 
-    # 定义信号
-    finished = pyqtSignal(list)  # 加载完成信号，传递加载的聊天历史
-    error = pyqtSignal(str)  # 错误信号，传递错误信息
+    # 定义信号 - PyQt5的pyqtSignal不支持List[ChatHistoryItem]这种类型注解格式
+    finished = pyqtSignal(list)  # 加载完成信号，传递加载的聊天历史列表
+    error = pyqtSignal(str)  # 错误信号，传递错误信息字符串
 
     def __init__(self, history_file: str):
         """
@@ -33,48 +69,60 @@ class ChatHistoryLoadWorker(QThread):
             history_file (str): 聊天历史文件路径
         """
         super().__init__()
-        self.history_file = history_file
+        self.history_file = history_file  # 保存聊天历史文件路径
 
     def run(self):
         """
         线程运行函数，执行异步加载
+        
+        在线程中执行文件读取和解析操作，
+        处理可能出现的各种异常，
+        通过信号返回结果或错误信息。
         """
         try:
             logger.info(f"异步加载聊天历史: {self.history_file}")
             if os.path.exists(self.history_file):
+                # 文件存在时读取并解析
                 with open(self.history_file, "r", encoding="utf-8") as f:
                     loaded_data = json.load(f)
                     # 确保 chat_histories 始终是一个列表
                     if isinstance(loaded_data, list):
                         chat_histories = loaded_data
                     else:
+                        # 文件格式不正确时，创建空列表
                         chat_histories = []
                         logger.warning(
                             f"{self.history_file} 中的内容不是列表，创建空历史记录列表"
                         )
                 logger.info(f"已异步加载 {len(chat_histories)} 条历史记录")
             else:
+                # 文件不存在时，创建空列表
                 chat_histories = []
                 logger.info(f"{self.history_file} 不存在，创建空历史记录列表")
 
+            # 发送加载完成信号，传递聊天历史列表
             self.finished.emit(chat_histories)
         except FileNotFoundError as e:
+            # 处理文件未找到异常
             logger.error(f"文件未找到: {str(e)}")
             self.error.emit(f"文件未找到: {str(e)}")
             self.finished.emit([])
         except PermissionError as e:
+            # 处理权限错误
             logger.error(
                 f"权限错误: 无法读取文件 {self.history_file}，错误信息: {str(e)}"
             )
             self.error.emit(f"权限错误: {str(e)}")
             self.finished.emit([])
         except json.JSONDecodeError as e:
+            # 处理JSON解析错误
             logger.error(
                 f"JSON解析错误: 文件 {self.history_file} 格式无效，错误信息: {str(e)}"
             )
             self.error.emit(f"JSON解析错误: {str(e)}")
             self.finished.emit([])
         except Exception as e:
+            # 处理其他未预期的异常
             logger.error(f"异步加载聊天历史失败: {str(e)}")
             self.error.emit(f"加载失败: {str(e)}")
             self.finished.emit([])
@@ -98,7 +146,6 @@ class ChatHistoryManager:
         app_data_dir = get_app_data_dir()
 
         # 确保应用程序数据目录存在
-        import os
         os.makedirs(app_data_dir, exist_ok=True)
 
         # 使用应用程序数据目录作为聊天历史文件的保存位置
@@ -107,19 +154,19 @@ class ChatHistoryManager:
         self._loaded_history_count: int = 0  # 记录已加载的历史记录数量
         
         # 缓存机制 - 优化内存使用
-        self._history_cache: List[Dict] = []  # 缓存已加载的历史记录
+        self._history_cache: List[ChatHistoryItem] = []  # 缓存已加载的历史记录
         self._is_cache_loaded: bool = False  # 标记缓存是否已加载
-        self._modified_indices: set = set()  # 标记已修改的记录索引
+        self._modified_indices: set[int] = set()  # 标记已修改的记录索引
         
         # 惰性加载标志 - 只有在需要时才加载历史记录
         self._lazy_load_triggered: bool = False
         
         # 初始化聊天历史列表 - 不立即加载，改为惰性加载
-        self.chat_histories: List[Dict] = []
+        self.chat_histories: List[ChatHistoryItem] = []
 
     def async_load_history(
         self,
-        callback: Callable[[List[Dict]], None],
+        callback: Callable[[List[ChatHistoryItem]], None],
         error_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
         """
@@ -143,7 +190,7 @@ class ChatHistoryManager:
         # 启动线程
         self.load_worker.start()
 
-    def _on_async_load_finished(self, chat_histories: List[Dict]) -> None:
+    def _on_async_load_finished(self, chat_histories: List[ChatHistoryItem]) -> None:
         """
         异步加载完成的槽函数
 
@@ -157,7 +204,7 @@ class ChatHistoryManager:
         if hasattr(self, "_load_callback") and self._load_callback:
             self._load_callback(chat_histories)
 
-    def _load_full_history(self) -> List[Dict]:
+    def _load_full_history(self) -> List[ChatHistoryItem]:
         """
         从文件加载完整的聊天历史到缓存
         """
@@ -201,7 +248,7 @@ class ChatHistoryManager:
             logger.error(f"加载聊天历史失败: {str(e)}")
             return []
     
-    def load_history(self) -> List[Dict]:
+    def load_history(self) -> List[ChatHistoryItem]:
         """
         同步从缓存加载聊天历史
         仅用于需要立即获取历史记录的场景
@@ -220,7 +267,7 @@ class ChatHistoryManager:
         logger.info(f"从缓存加载了 {len(self.chat_histories)} 条历史记录")
         return self.chat_histories
     
-    def get_history_page(self, page: int = 1, page_size: int = 20) -> List[Dict]:
+    def get_history_page(self, page: int = 1, page_size: int = 20) -> List[ChatHistoryItem]:
         """
         分页获取历史记录
 
@@ -270,7 +317,7 @@ class ChatHistoryManager:
                 f"已修剪 {old_count} 条旧历史记录，当前保留 {len(self._history_cache)} 条"
             )
 
-    def save_history(self, history: Optional[List[Dict]] = None) -> bool:
+    def save_history(self, history: Optional[List[ChatHistoryItem]] = None) -> bool:
         """
         保存聊天历史到文件
 
@@ -338,34 +385,40 @@ class ChatHistoryManager:
             return False
 
     def generate_formatted_topic(
-        self, func_type: str, topic: Optional[str] = None
+        self, func_type: Literal["聊天", "讨论", "辩论", "批量"], topic: Optional[str] = None
     ) -> str:
         """
         生成格式化的主题名称
 
         Args:
-            func_type (str): 功能类型，可选值："聊天"、"讨论"、"辩论"、"批量"
+            func_type (Literal["聊天", "讨论", "辩论", "批量"]): 功能类型
             topic (Optional[str], optional): 原主题内容. Defaults to None.
 
         Returns:
             str: 格式化的主题名称
         """
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+        
+        # 功能类型到翻译键的映射
+        func_type_map = {
+            "聊天": "chat",
+            "讨论": "discussion",
+            "辩论": "debate",
+            "批量": "batch"
+        }
+        
+        # 获取翻译后的功能类型
+        translated_type = i18n.translate(func_type_map.get(func_type, "unknown"))
+        
+        # 根据功能类型生成不同格式的主题
         if func_type == "聊天":
-            return f"【{i18n.translate('chat')}】{current_time}"
-        elif func_type == "讨论":
-            return f"【{i18n.translate('discussion')}】{topic} {current_time}"
-        elif func_type == "辩论":
-            return f"【{i18n.translate('debate')}】{topic} {current_time}"
-        elif func_type == "批量":
-            return f"【{i18n.translate('batch')}】{topic} {current_time}"
+            return f"【{translated_type}】{current_time}"
         else:
-            return f"【{i18n.translate('unknown')}】{topic or i18n.translate('no_topic')} {current_time}"
+            return f"【{translated_type}】{topic} {current_time}"
 
     def add_history(
         self,
-        func_type: str,
+        func_type: Literal["聊天", "讨论", "辩论", "批量"],
         topic: str,
         model1_name: str,
         model2_name: Optional[str],
@@ -450,7 +503,7 @@ class ChatHistoryManager:
         self._modified_indices.add(len(self._history_cache) - 1)
         return self.save_history()
 
-    def get_history_by_topic(self, topic: str) -> Optional[Dict]:
+    def get_history_by_topic(self, topic: str) -> Optional[ChatHistoryItem]:
         """
         根据主题获取聊天历史
 

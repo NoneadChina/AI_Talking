@@ -446,34 +446,41 @@ class ChatTabWidget(QWidget):
         else:
             logger.warning(f"模型列表更新后为空，API: {api}")
 
-    def send_chat_message(self, message):
+    def send_chat_message(self, original_message, full_message):
         """
         发送聊天消息到AI并显示回复
         如果AI正在回复，则将消息加入队列，等待AI回复完成后再发送
+        
+        参数:
+            original_message: 原始消息（用于显示在聊天历史中）
+            full_message: 完整消息（用于发送给模型，包含文件解析内容）
         """
-        if not message:
+        if not original_message:
             return
 
-        # 显示用户消息
-        self.chat_list_widget.append_message("用户", message)
+        # 显示用户消息（只显示原始消息，不包含文件解析内容）
+        from utils.i18n_manager import i18n
+        user_text = i18n.translate('user')
+        thinking_text = i18n.translate('thinking')
+        self.chat_list_widget.append_message(user_text, original_message)
 
-        # 如果AI正在回复，将消息加入队列
+        # 如果AI正在回复，将消息加入队列（需要存储两个参数）
         if self.is_ai_responding:
-            self.pending_messages.append(message)
+            self.pending_messages.append((original_message, full_message))
             logger.info(
                 f"AI正在回复，消息已加入队列，当前队列长度: {len(self.pending_messages)}"
             )
             return
 
         # 显示"正在思考..."状态
-        self.chat_list_widget.append_message("AI", "正在思考...")
+        self.chat_list_widget.append_message("AI", thinking_text)
 
         # 标记AI正在回复
         self.is_ai_responding = True
 
         # 使用threading.Thread创建线程发送消息，避免阻塞UI
         thread = threading.Thread(
-            target=self._send_chat_message_thread, args=(message,)
+            target=self._send_chat_message_thread, args=(full_message,)
         )
         thread.daemon = True  # 设置为守护线程，程序退出时自动结束
         thread.start()
@@ -583,22 +590,29 @@ class ChatTabWidget(QWidget):
 
             # 处理待发送的消息队列
             if self.pending_messages:
-                next_message = self.pending_messages.pop(0)
+                # 从队列中获取元组(original_message, full_message)
+                original_message, full_message = self.pending_messages.pop(0)
                 logger.info(
                     f"处理待发送消息，剩余队列长度: {len(self.pending_messages)}"
                 )
+                
+                # 显示用户消息（只显示原始消息，不包含文件解析内容）
+                from utils.i18n_manager import i18n
+                user_text = i18n.translate('user')
+                thinking_text = i18n.translate('thinking')
+                self.chat_list_widget.append_message(user_text, original_message)
 
                 # 显示"正在思考..."状态
-                self.chat_list_widget.append_message("AI", "正在思考...")
+                self.chat_list_widget.append_message("AI", thinking_text)
 
                 # 标记AI正在回复
                 self.is_ai_responding = True
 
-                # 使用线程池发送下一条消息
+                # 使用线程池发送下一条消息，只传递full_message给模型
                 from concurrent.futures import ThreadPoolExecutor
 
                 with ThreadPoolExecutor(max_workers=3) as executor:
-                    executor.submit(self._send_chat_message_thread, next_message)
+                    executor.submit(self._send_chat_message_thread, full_message)
 
     def append_to_standard_chat_history(self, sender, content, model=""):
         """
@@ -726,10 +740,13 @@ class ChatTabWidget(QWidget):
             for msg in self.standard_chat_history_messages:
                 try:
                     if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                        from utils.i18n_manager import i18n
+                        user_text = i18n.translate('user')
+                        system_text = i18n.translate('system')
                         sender = (
-                            "用户"
+                            user_text
                             if msg["role"] == "user"
-                            else "AI" if msg["role"] == "assistant" else "系统"
+                            else "AI" if msg["role"] == "assistant" else system_text
                         )
                         model = chat_history.get("model", "")
                         # 渲染单条消息HTML

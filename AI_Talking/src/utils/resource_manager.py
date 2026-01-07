@@ -134,14 +134,35 @@ class ResourceManager:
 
         try:
             resource_path = ResourceManager.get_resource_path(resource_name)
-            icon = QIcon(resource_path)
+            print(f"尝试加载图标: {resource_path}")
+            
+            # 首先检查文件是否存在
+            if not os.path.exists(resource_path):
+                print(f"图标文件不存在: {resource_path}")
+                return None
+            
+            # 尝试使用QPixmap加载，再转换为QIcon（更好的SVG支持）
+            pixmap = QPixmap(resource_path)
+            if pixmap.isNull():
+                print(f"QPixmap加载失败: {resource_path}")
+                # 如果QPixmap加载失败，尝试直接使用QIcon
+                icon = QIcon(resource_path)
+                # 检查QIcon是否有效
+                if icon.isNull():
+                    print(f"QIcon加载失败: {resource_path}")
+                    return None
+            else:
+                # 从有效的QPixmap创建QIcon
+                icon = QIcon(pixmap)
 
             # 将结果存入缓存
             ResourceManager._resource_cache[cache_key] = icon
-
+            print(f"图标加载成功: {resource_path}")
             return icon
         except Exception as e:
             print(f"加载图标资源 {resource_name} 失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     @staticmethod

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 AI 服务接口模块
-提供统一的 AI 服务调用接口，支持多种 AI 服务提供商
+提供统一的 AI 服务调用接口，支持多种 AI 服务提供商（Ollama、OpenAI、DeepSeek等）
+实现了重试机制、速率限制、流式响应处理等核心功能
 """
 
 import abc
@@ -70,6 +71,9 @@ def retry_with_backoff(
 class RateLimiter:
     """
     请求速率限制器，使用令牌桶算法实现
+    
+    该类通过装饰器模式，为不同类型的AI服务提供独立的速率限制，
+    防止频繁请求导致的API限流或服务不可用问题。
     """
     
     def __init__(self, max_calls: int, period: float):
@@ -80,31 +84,33 @@ class RateLimiter:
             max_calls: 时间段内允许的最大调用次数
             period: 时间段长度（秒）
         """
-        self.max_calls = max_calls
-        self.period = period
-        self.calls = defaultdict(list)  # 存储每个服务类型的调用时间
+        self.max_calls = max_calls  # 时间段内允许的最大调用次数
+        self.period = period  # 时间段长度（秒）
+        # 存储每个服务类型的调用时间，使用defaultdict自动处理新服务类型
+        self.calls = defaultdict(list)  # 键: 服务类型, 值: 调用时间列表
     
     def __call__(self, func: Callable) -> Callable:
         """
-        装饰器入口
+        装饰器入口，使RateLimiter实例可以直接作为装饰器使用
         
         Args:
-            func: 要装饰的函数
+            func: 要装饰的函数，通常是AI服务的API调用方法
             
         Returns:
-            Callable: 装饰后的函数
+            Callable: 装饰后的函数，带有速率限制功能
         """
         def wrapper(*args, **kwargs):
-            # 确定服务类型
+            # 确定服务类型，默认为"default"
             service_type = "default"
-            # 检查是否是类方法调用（有self参数）
+            # 检查是否是类方法调用（第一个参数是self）
             if args and hasattr(args[0], "__class__"):
+                # 使用类名的小写形式作为服务类型标识
                 service_type = args[0].__class__.__name__.lower()
             
-            # 获取当前时间
+            # 获取当前时间戳
             now = time.time()
             
-            # 清除过期的调用记录
+            # 清除过期的调用记录（超过period时间的记录）
             self.calls[service_type] = [
                 call_time for call_time in self.calls[service_type] 
                 if now - call_time < self.period
@@ -112,13 +118,15 @@ class RateLimiter:
             
             # 检查是否超过速率限制
             if len(self.calls[service_type]) >= self.max_calls:
-                # 计算需要等待的时间
+                # 计算需要等待的时间（直到最早的调用记录过期）
                 wait_time = self.period - (now - self.calls[service_type][0])
                 if wait_time > 0:
+                    # 记录等待日志
                     logger.warning(
                         f"请求速率限制触发，服务类型: {service_type}, "
                         f"等待 {wait_time:.2f} 秒后重试"
                     )
+                    # 等待到允许的时间点
                     time.sleep(wait_time)
             
             # 记录本次调用时间
@@ -145,19 +153,29 @@ rate_limiter = {
 class AIServiceInterface(metaclass=abc.ABCMeta):
     """
     AI 服务接口抽象类，定义统一的 AI 服务调用接口
+    
+    该抽象类定义了所有AI服务实现必须遵循的接口规范，
+    包括模型列表获取、聊天完成、流式响应处理等核心功能，
+    并提供了模型列表缓存机制，提高系统性能。
     """
 
     def __init__(self):
         """
         初始化 AI 服务接口，设置模型列表缓存
+        
+        模型列表缓存用于减少API调用次数，提高系统性能，
+        缓存默认有效期为30分钟。
         """
-        self._model_cache = None
-        self._cache_timestamp = 0
-        self._cache_duration = 1800  # 30分钟
+        self._model_cache = None  # 模型列表缓存
+        self._cache_timestamp = 0  # 缓存时间戳
+        self._cache_duration = 1800  # 缓存有效期（30分钟）
 
     def get_models(self) -> List[str]:
         """
         获取可用的模型列表，使用缓存机制
+        
+        该方法首先检查缓存是否有效，如有效则直接返回缓存的模型列表；
+        如缓存过期或不存在，则调用实际的API获取模型列表并更新缓存。
 
         Returns:
             List[str]: 模型名称列表
@@ -186,6 +204,8 @@ class AIServiceInterface(metaclass=abc.ABCMeta):
     def _fetch_models(self) -> List[str]:
         """
         实际调用API获取模型列表的抽象方法
+        
+        该方法由具体的AI服务实现类负责实现，不同服务提供商的API调用方式不同。
 
         Returns:
             List[str]: 模型名称列表
@@ -195,6 +215,8 @@ class AIServiceInterface(metaclass=abc.ABCMeta):
     def clear_cache(self):
         """
         清除模型列表缓存
+        
+        当API密钥或配置变更时，调用此方法清除缓存，确保下次获取最新的模型列表。
         """
         logger.info("清除模型列表缓存")
         self._model_cache = None
@@ -203,6 +225,8 @@ class AIServiceInterface(metaclass=abc.ABCMeta):
     def refresh_cache(self):
         """
         刷新模型列表缓存
+        
+        先清除缓存，再重新获取模型列表，确保返回最新的模型信息。
 
         Returns:
             List[str]: 更新后的模型列表
@@ -223,17 +247,27 @@ class AIServiceInterface(metaclass=abc.ABCMeta):
     ) -> str | Generator[str, None, None]:
         """
         生成聊天完成响应
+        
+        该方法是AI服务的核心功能，用于生成基于给定消息的AI响应，
+        支持同步响应和流式响应两种模式。
 
         Args:
-            messages: 聊天消息列表
-            model: 模型名称
-            temperature: 生成文本的随机性
+            messages: 聊天消息列表，格式: [{"role": "user", "content": "你好"}, ...]
+            model: 模型名称，如 "gpt-3.5-turbo", "llama2:7b" 等
+            temperature: 生成文本的随机性，范围通常为0.0-1.0或0.0-2.0
+                        值越大，生成结果越随机；值越小，生成结果越确定
             stream: 是否启用流式响应
-            yield_full_response: 是否返回完整响应，False 时仅返回新增内容
-            **kwargs: 其他参数
+                - True: 返回生成器，逐块返回响应内容
+                - False: 等待完整响应后一次性返回
+            yield_full_response: 仅在stream=True时有效
+                - True: 每次返回截至当前的完整响应文本
+                - False: 仅返回当前增量文本
+            **kwargs: 其他参数，可传递给不同AI服务的额外配置
 
         Returns:
-            str or Generator[str, None, None]: 完整响应或流式响应生成器
+            str or Generator[str, None, None]: 
+                - 非流式模式: 返回完整的响应文本字符串
+                - 流式模式: 返回生成器，逐块生成响应文本
         """
         pass
 
@@ -246,7 +280,8 @@ class AIServiceInterface(metaclass=abc.ABCMeta):
         """
         处理流式响应，支持多种格式
 
-        该方法处理来自不同AI服务提供商的流式响应，将原始响应转换为用户友好的文本流
+        该方法处理来自不同AI服务提供商的流式响应，将原始响应转换为用户友好的文本流，
+        支持OpenAI格式和Ollama格式两种主流流式响应格式。
 
         Args:
             response: 响应对象，包含服务器返回的原始流数据

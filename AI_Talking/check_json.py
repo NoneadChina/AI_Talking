@@ -1,36 +1,15 @@
+#!/usr/bin/env python3
 import json
-import os
+import sys
 
-def check_json_file(file_path):
-    print(f"Checking {file_path}...")
+# 默认检查简体中文，如果提供了参数则检查指定语言
+lang = sys.argv[1] if len(sys.argv) > 1 else 'zh-CN'
+
+file_path = f'src/i8n/{lang}.json'
+with open(file_path, 'r', encoding='utf-8') as f:
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        print(f"✓ {file_path} is valid JSON")
-        return True
+        data = json.load(f)
+        print(f'{lang} JSON格式正确')
+        print(f'包含 {len(data)} 个键')
     except json.JSONDecodeError as e:
-        print(f"✗ Error in {file_path}: {e}")
-        return False
-    except Exception as e:
-        print(f"✗ Unexpected error in {file_path}: {e}")
-        return False
-
-# Check all language files
-language_files = [
-    'src/i8n/ar.json',
-    'src/i8n/ru.json',
-    'src/i8n/zh-CN.json',
-    'src/i8n/zh-TW.json',
-    'src/i8n/en.json',
-    'src/i8n/ja.json',
-    'src/i8n/ko.json',
-    'src/i8n/de.json',
-    'src/i8n/es.json',
-    'src/i8n/fr.json'
-]
-
-print("Checking all translation files...")
-print("=" * 50)
-
-for file in language_files:
-    check_json_file(file)
+        print(f'{lang} JSON格式错误: {e}')

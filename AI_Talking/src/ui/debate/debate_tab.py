@@ -145,7 +145,7 @@ class DebateTabWidget(QWidget):
         self.chat_history_panel.clear_debate_history()
 
         # 显示辩论开始消息，告知用户辩论主题
-        self.chat_history_panel.append_to_debate_history("系统", f"{i18n.translate('debate_topic')}: {topic}")
+        self.chat_history_panel.append_to_debate_history(i18n.translate("system"), f"{i18n.translate('debate_topic')}: {topic}")
 
         # 获取用户配置的辩论参数
         api1, model1 = self.ai_config_panel.get_ai1_config()
@@ -157,7 +157,7 @@ class DebateTabWidget(QWidget):
         # 显示辩论配置，让用户了解当前辩论的设置
         api3, model3 = self.ai_config_panel.get_ai3_config()
         self.chat_history_panel.append_to_debate_history(
-            "系统",
+            i18n.translate("system"),
             f"{i18n.translate('debate_config')}: {i18n.translate('pro_ai1')}({api1}:{model1}) vs {i18n.translate('con_ai2')}({api2}:{model2})，<br>{i18n.translate('referee_ai3')}({api3}:{model3})，{i18n.translate('total_rounds')} {rounds}，{i18n.translate('temperature')} {temperature}",
         )
 
@@ -499,6 +499,56 @@ class DebateTabWidget(QWidget):
                     self.chat_history_panel.debate_history_text.setHtml(
                         debate_history["html_content"]
                     )
+                    
+                    # 加载完成后，重新初始化事件监听器和QWebChannel
+                    def reinit_after_load():
+                        # 重新初始化JavaScript事件
+                        js_reinit = """
+                        setTimeout(function() {
+                            if (typeof initMessageActions === 'function') {
+                                initMessageActions();
+                            }
+                            
+                            // 检查并重新初始化MutationObserver，确保新添加的按钮能自动绑定事件
+                            if (window.messageObserver) {
+                                window.messageObserver.disconnect();
+                            }
+                            
+                            // 重新创建并启动MutationObserver
+                            window.messageObserver = new MutationObserver(function(mutations) {
+                                mutations.forEach(function(mutation) {
+                                    if (mutation.type === 'childList') {
+                                        if (typeof initMessageActions === 'function') {
+                                            initMessageActions();
+                                        }
+                                    }
+                                });
+                            });
+                            
+                            const config = {
+                                childList: true,
+                                subtree: true
+                            };
+                            
+                            const chatBody = document.getElementById('debate-body');
+                            if (chatBody) {
+                                window.messageObserver.observe(chatBody, config);
+                            }
+                        }, 500);
+                        """
+                        self.chat_history_panel.debate_history_text.page().runJavaScript(js_reinit)
+                        
+                        # 重新初始化QWebChannel
+                        from PyQt5.QtWebChannel import QWebChannel
+                        from src.ui.debate.chat_history_panel import TranslationHandler
+                        channel = QWebChannel()
+                        translation_handler = TranslationHandler(self.chat_history_panel)
+                        channel.registerObject('main', translation_handler)
+                        self.chat_history_panel.debate_history_text.page().setWebChannel(channel)
+                    
+                    # 延迟执行，确保HTML已经加载完成
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(500, reinit_after_load)
 
                 # 更新辩论配置
                 if "topic" in debate_history:

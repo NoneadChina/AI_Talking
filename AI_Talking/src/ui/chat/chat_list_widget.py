@@ -95,6 +95,28 @@ class ChatListWidget(QWidget):
                     background-color: #f5f7fa;
                     margin: 0;
                     padding: 15px;
+                    overflow-x: hidden;
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+                
+                /* 图片样式 */
+                .message img {
+                    max-width: 300px;
+                    height: auto;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    border-radius: 8px;
+                    border: 1px solid #e0e0e0;
+                }
+                
+                /* 点击放大后的图片样式 */
+                .message img.zoomed {
+                    max-width: 100%;
+                    max-height: 80vh;
+                    position: relative;
+                    z-index: 100;
+                    border: 2px solid #4caf50;
                 }
                 
                 /* 消息容器 */
@@ -355,13 +377,31 @@ class ChatListWidget(QWidget):
                 });
                 
                 // 初始化QWebChannel
-                window.translationHandler;
+                window.translationHandler = null;
                 new QWebChannel(qt.webChannelTransport, function(channel) {
                     window.translationHandler = channel.objects.translationHandler;
+                    // QWebChannel初始化完成后，重新初始化消息操作按钮
+                    // 确保translationHandler已准备好
+                    setTimeout(function() {
+                        if (typeof initMessageActions === 'function') {
+                            initMessageActions();
+                        }
+                    }, 100);
                 });
                 
                 // 初始化时启用自动滚动
                 window.autoScrollEnabled = true;
+                
+                // 图片点击缩放功能
+                // 使用事件委托处理所有图片点击事件，包括动态添加的图片
+                document.addEventListener('click', function(event) {
+                    if (event.target.tagName === 'IMG') {
+                        // 切换图片的zoomed类，实现缩放效果
+                        event.target.classList.toggle('zoomed');
+                        // 阻止事件冒泡，避免触发其他事件
+                        event.stopPropagation();
+                    }
+                });
                 
                 // 消息操作功能
                 
@@ -499,7 +539,7 @@ class ChatListWidget(QWidget):
                             
                             // 创建对话框标题
                             const title = document.createElement('h3');
-                            title.textContent = '请输入编辑后的内容:';
+                            title.textContent = window.i18n_texts.edit_content;
                             title.style.cssText = 'margin-top: 0; margin-bottom: 15px; font-size: 18px;';
                             modalContent.appendChild(title);
                             
@@ -553,7 +593,7 @@ class ChatListWidget(QWidget):
                             
                             // 创建取消按钮
                             const cancelButton = document.createElement('button');
-                            cancelButton.textContent = '取消';
+                            cancelButton.textContent = window.i18n_texts.cancel;
                             cancelButton.style.cssText = `
                                 padding: 8px 16px;
                                 background-color: #f0f0f0;
@@ -571,7 +611,7 @@ class ChatListWidget(QWidget):
                             
                             // 创建保存按钮
                             const saveButton = document.createElement('button');
-                            saveButton.textContent = '保存';
+                            saveButton.textContent = window.i18n_texts.save;
                             saveButton.style.cssText = `
                                 padding: 8px 16px;
                                 background-color: #2196f3;
@@ -592,7 +632,7 @@ class ChatListWidget(QWidget):
                                     messageContent.innerText = newText;
                                     
                                     // 显示编辑成功提示
-                                    showMessage('编辑成功');
+                                showMessage(window.i18n_texts.edit_success);
                                     
                                     // 关闭模态对话框
                                     document.body.removeChild(modal);
@@ -817,7 +857,7 @@ class ChatListWidget(QWidget):
                     const button = messageContainer.querySelector('.action-button:nth-child(1)');
                     if (button) {
                         const originalText = button.textContent;
-                        button.textContent = '翻译中...';
+                        button.textContent = window.i18n_texts.translating;
                         button.disabled = true;
                     }
                     
@@ -838,20 +878,18 @@ class ChatListWidget(QWidget):
                     });
                     
                     // 调用Python的翻译方法
-                    if (translationHandler) {
-                        translationHandler.handle_translation_request(textToTranslate, sourceLangCode, targetLangCode, requestId);
-                    } else {
-                        showMessage('翻译功能初始化失败，请刷新页面重试');
-                        // 恢复按钮状态
-                        if (button) {
-                            button.textContent = '翻译';
-                            button.disabled = false;
-                        }
-                        // 移除加载气泡
-                        if (loadingBubble) {
-                            loadingBubble.remove();
+                    // 多次检查translationHandler，确保它已初始化
+                    function tryCallTranslation() {
+                        if (window.translationHandler && window.translationHandler.handle_translation_request) {
+                            window.translationHandler.handle_translation_request(textToTranslate, sourceLangCode, targetLangCode, requestId);
+                        } else {
+                            // 如果handler还没准备好，等待一小段时间后重试
+                            setTimeout(tryCallTranslation, 50);
                         }
                     }
+                    
+                    // 延迟调用翻译方法，确保QWebChannel已初始化
+                    setTimeout(tryCallTranslation, 100);
                 }
                 
                 // 处理翻译结果
@@ -970,7 +1008,7 @@ class ChatListWidget(QWidget):
                             <span class="icon">🌐</span>
                             <div class="content-wrapper">
                                 <div class="sender-info">
-                                    <span class="sender" style="color: #009688;">翻译结果 (${targetLangName})</span>
+                                    <span class="sender" style="color: #009688;">${window.i18n_texts.translation_result} (${targetLangName})</span>
                                     <span class="timestamp">${new Date().toLocaleString()}</span>
                                 </div>
                                 <div class="message ${messageClass}">
@@ -1041,7 +1079,7 @@ class ChatListWidget(QWidget):
                             <span class="icon">🌐</span>
                             <div class="content-wrapper">
                                 <div class="sender-info">
-                                    <span class="sender" style="color: #009688;">翻译结果 (${targetLangName})</span>
+                                    <span class="sender" style="color: #009688;">${window.i18n_texts.translation_result} (${targetLangName})</span>
                                     <span class="timestamp">${new Date().toLocaleString()}</span>
                                 </div>
                                 <div class="message ${messageClass}" data-translation="true" data-source-lang="${sourceLangCode}" data-target-lang="${targetLangCode}">
@@ -1135,6 +1173,39 @@ class ChatListWidget(QWidget):
         </body>
         </html>
         """
+        
+        # 准备国际化文本
+        translation_result_text = i18n.translate('translation_result')
+        edit_content_text = i18n.translate('edit_content')
+        cancel_text = i18n.translate('cancel')
+        save_text = i18n.translate('save')
+        edit_success_text = i18n.translate('edit_success')
+        translating_text = i18n.translate('translating')
+        
+        # 准备国际化文本字典
+        i18n_texts = {
+            'translation_result': translation_result_text,
+            'edit_content': edit_content_text,
+            'cancel': cancel_text,
+            'save': save_text,
+            'edit_success': edit_success_text,
+            'translating': translating_text
+        }
+        
+        # 导入json模块
+        import json
+        
+        # 将字典转换为JSON字符串，确保语法正确
+        i18n_json = json.dumps(i18n_texts)
+        
+        # 注入国际化文本到JavaScript全局变量
+        initial_html = initial_html + f"""
+        <script>
+            // 国际化文本，在页面加载时注入
+            window.i18n_texts = {i18n_json};
+        </script>
+        """
+        
         self.chat_history_view.setHtml(initial_html)
 
     def append_message(self, sender, content, model=""):
@@ -1154,7 +1225,9 @@ class ChatListWidget(QWidget):
         rendered_content = json.dumps(markdown.markdown(content))
 
         # 如果是AI回复且不是"正在思考..."，则处理流式更新
-        if sender == "AI" and content != "正在思考...":
+        from utils.i18n_manager import i18n
+        thinking_text = i18n.translate('thinking')
+        if sender == "AI" and content != thinking_text:
             js = (
                 "(function() {\n"
                 "    const chatBody = document.getElementById('chat-body');\n"
@@ -1167,7 +1240,7 @@ class ChatListWidget(QWidget):
                 "        const messageContent = message.querySelector('.message');\n"
                 "        const sender = message.querySelector('.sender');\n"
                 "        \n"
-                "        if (messageContent && (sender && sender.textContent === 'AI' || messageContent.textContent === '正在思考...')) {\n"
+                f"        if (messageContent && (sender && sender.textContent === 'AI' || messageContent.textContent === '{thinking_text}')) {{\n"
                 "            // 更新现有消息内容\n"
                 "            messageContent.innerHTML = " + rendered_content + ";\n"
                 "            const senderInfo = message.querySelector('.sender-info');\n"
@@ -1225,93 +1298,81 @@ class ChatListWidget(QWidget):
 
     def reinit_ui(self):
         """重新初始化UI，用于语言切换时更新界面"""
-        # 保存当前聊天内容并重新初始化web内容
-        def save_and_reinit(html):
-            # 保存当前内容的body部分
-            saved_body_content = None
-            body_start = html.find("<body")
-            if body_start != -1:
-                body_end = html.find(">", body_start) + 1
-                body_close = html.rfind("</body>")
-                if body_close != -1:
-                    body_content = html[body_end:body_close]
-                    # 移除所有script标签，防止变量重复声明
-                    import re
-                    saved_body_content = re.sub(r'<script[^>]*>.*?</script>', '', body_content, flags=re.DOTALL)
-            
-            # 重新初始化web内容，更新翻译文本
-            self._init_web_content()
-            
-            # 如果有保存的内容，恢复它
-            if saved_body_content:
-                # 等待新的web内容初始化完成后再恢复
-                def restore_content(new_html):
-                    # 找到新HTML的body标签位置
-                    new_body_start = new_html.find("<body")
-                    if new_body_start != -1:
-                        new_body_end = new_html.find(">", new_body_start) + 1
-                        new_body_close = new_html.rfind("</body>")
-                        if new_body_close != -1:
-                            # 构建新的HTML，保留新的头部，插入保存的body内容
-                            final_html = (
-                                new_html[:new_body_end]
-                                + saved_body_content
-                                + new_html[new_body_close:]
-                            )
-                            self.chat_history_view.setHtml(final_html)
-                            
-                            # 更新所有消息按钮的文本
-                            js_update_buttons = """
-                            // 更新所有消息按钮的文本
-                            document.querySelectorAll('.message-actions').forEach(container => {
-                                // 根据类名获取按钮，确保功能正确绑定
-                                // 翻译按钮
-                                const translateBtn = container.querySelector('.translate-btn') || container.querySelectorAll('.action-button')[0];
-                                if (translateBtn) {
-                                    translateBtn.textContent = "__TRANSLATE__";
-                                    translateBtn.className = 'action-button translate-btn';
-                                }
-                                
-                                // 编辑按钮
-                                const editBtn = container.querySelector('.edit-btn') || container.querySelectorAll('.action-button')[1];
-                                if (editBtn) {
-                                    editBtn.textContent = "__EDIT__";
-                                    editBtn.className = 'action-button edit-btn';
-                                }
-                                
-                                // 复制按钮
-                                const copyBtn = container.querySelector('.copy-btn') || container.querySelectorAll('.action-button')[2];
-                                if (copyBtn) {
-                                    copyBtn.textContent = "__COPY__";
-                                    copyBtn.className = 'action-button copy-btn';
-                                }
-                                
-                                // 删除按钮
-                                const deleteBtn = container.querySelector('.delete-btn') || container.querySelectorAll('.action-button')[3];
-                                if (deleteBtn) {
-                                    deleteBtn.textContent = "__DELETE__";
-                                    deleteBtn.className = 'action-button delete-btn';
-                                }
-                            });
-                            """
-                            
-                            # 替换占位符为翻译后的文本
-                            js_update_buttons = js_update_buttons.replace("__TRANSLATE__", i18n.translate("translate"))
-                            js_update_buttons = js_update_buttons.replace("__EDIT__", i18n.translate("edit"))
-                            js_update_buttons = js_update_buttons.replace("__COPY__", i18n.translate("copy"))
-                            js_update_buttons = js_update_buttons.replace("__DELETE__", i18n.translate("delete"))
-                            
-                            # 执行JavaScript更新按钮文本
-                            self.chat_history_view.page().runJavaScript(js_update_buttons)
-                            
-                            # 显式调用initMessageActions()重新绑定按钮事件
-                            self.chat_history_view.page().runJavaScript("if (typeof initMessageActions === 'function') { initMessageActions(); }")
-                
-                # 获取新初始化的HTML结构
-                self.chat_history_view.page().toHtml(restore_content)
+        # 直接使用JavaScript更新所有消息按钮的文本，避免重新加载整个HTML
+        # 准备翻译后的按钮文本
+        translate_text = i18n.translate("translate")
+        edit_text = i18n.translate("edit")
+        copy_text = i18n.translate("copy")
+        delete_text = i18n.translate("delete")
         
-        # 异步获取当前内容，在回调中执行保存和重新初始化
-        self.chat_history_view.page().toHtml(save_and_reinit)
+        # 构建JavaScript代码，直接更新所有按钮文本
+        js_template = """
+        (function() {
+            // 更新所有消息按钮的文本
+            document.querySelectorAll('.message-actions').forEach(container => {
+                // 根据索引获取按钮，确保功能正确绑定
+                const buttons = container.querySelectorAll('.action-button');
+                if (buttons.length > 0) {
+                    buttons[0].textContent = '__TRANSLATE__';
+                    buttons[0].className = 'action-button translate-btn';
+                }
+                if (buttons.length > 1) {
+                    buttons[1].textContent = '__EDIT__';
+                    buttons[1].className = 'action-button edit-btn';
+                }
+                if (buttons.length > 2) {
+                    buttons[2].textContent = '__COPY__';
+                    buttons[2].className = 'action-button copy-btn';
+                }
+                if (buttons.length > 3) {
+                    buttons[3].textContent = '__DELETE__';
+                    buttons[3].className = 'action-button delete-btn';
+                }
+            });
+            
+            // 重新初始化消息操作事件
+            if (typeof initMessageActions === 'function') {
+                initMessageActions();
+            }
+        })();
+        """
+        
+        # 替换占位符为实际的翻译文本
+        js_update_buttons = js_template.replace('__TRANSLATE__', translate_text)
+        js_update_buttons = js_update_buttons.replace('__EDIT__', edit_text)
+        js_update_buttons = js_update_buttons.replace('__COPY__', copy_text)
+        js_update_buttons = js_update_buttons.replace('__DELETE__', delete_text)
+        
+        # 执行JavaScript更新按钮文本
+        self.chat_history_view.page().runJavaScript(js_update_buttons)
+        
+        # 重新注入最新的国际化文本到JavaScript全局变量
+        translation_result_text = i18n.translate('translation_result')
+        edit_content_text = i18n.translate('edit_content')
+        cancel_text = i18n.translate('cancel')
+        save_text = i18n.translate('save')
+        edit_success_text = i18n.translate('edit_success')
+        translating_text = i18n.translate('translating')
+        
+        # 准备国际化文本字典
+        i18n_texts = {
+            'translation_result': translation_result_text,
+            'edit_content': edit_content_text,
+            'cancel': cancel_text,
+            'save': save_text,
+            'edit_success': edit_success_text,
+            'translating': translating_text
+        }
+        
+        # 导入json模块
+        import json
+        
+        # 将字典转换为JSON字符串，确保语法正确
+        i18n_json = json.dumps(i18n_texts)
+        
+        # 注入国际化文本到JavaScript全局变量
+        js_inject_i18n = f"window.i18n_texts = {i18n_json};"
+        self.chat_history_view.page().runJavaScript(js_inject_i18n)
         
     def translate_message(self, text, source_lang, target_lang):
         """

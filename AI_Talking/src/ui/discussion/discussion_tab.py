@@ -147,7 +147,7 @@ class DiscussionTabWidget(QWidget):
 
             # 显示讨论开始消息，告知用户讨论主题
             self.chat_history_panel.append_to_discussion_history(
-                "系统", f"{i18n.translate('discussion_topic')}: {topic}"
+                i18n.translate('system'), f"{i18n.translate('discussion_topic')}: {topic}"
             )
 
             # 获取用户配置的讨论参数
@@ -160,7 +160,7 @@ class DiscussionTabWidget(QWidget):
             # 显示讨论配置，让用户了解当前讨论的设置
             api3, model3 = self.ai_config_panel.get_ai3_config()
             self.chat_history_panel.append_to_discussion_history(
-                "系统",
+                i18n.translate('system'),
                 f"{i18n.translate('discussion_config')}: {i18n.translate('scholar_ai1')}({api1}:{model1}) vs {i18n.translate('scholar_ai2')}({api2}:{model2})，<br>{i18n.translate('expert_ai3')}({api3}:{model3})，{i18n.translate('total_rounds')} {rounds}，{i18n.translate('temperature')} {temperature}",
             )
 
@@ -419,7 +419,7 @@ class DiscussionTabWidget(QWidget):
             logger.error(f"{i18n.translate('summary_error')}: {error}")
             # 显示错误信息到讨论历史
             self.chat_history_panel.append_to_discussion_history(
-                "系统", f"{i18n.translate('summary_error')}: {error}"
+                i18n.translate('system'), f"{i18n.translate('summary_error')}: {error}"
             )
             # 更新状态信息
             self.update_status(i18n.translate("summary_failed"))
@@ -469,7 +469,7 @@ class DiscussionTabWidget(QWidget):
             logger.error(f"{i18n.translate('discussion_error')}: {error}")
             # 显示错误信息到讨论历史
             self.chat_history_panel.append_to_discussion_history(
-                "系统", f"{i18n.translate('discussion_error')}: {error}"
+                i18n.translate('system'), f"{i18n.translate('discussion_error')}: {error}"
             )
             # 更新状态信息
             self.update_status(i18n.translate("discussion_failed"))
@@ -627,6 +627,30 @@ class DiscussionTabWidget(QWidget):
                     self.chat_history_panel.chat_history_text.page().toHtml(
                         get_current_html
                     )
+                    
+                    # 加载完成后，重新初始化事件监听器和QWebChannel
+                    def reinit_after_load():
+                        # 重新初始化JavaScript事件
+                        js_reinit = """
+                        setTimeout(function() {
+                            if (typeof initMessageActions === 'function') {
+                                initMessageActions();
+                            }
+                        }, 500);
+                        """
+                        self.chat_history_panel.chat_history_text.page().runJavaScript(js_reinit)
+                        
+                        # 重新初始化QWebChannel
+                        from PyQt5.QtWebChannel import QWebChannel
+                        from src.ui.discussion.chat_history_panel import TranslationHandler
+                        channel = QWebChannel()
+                        translation_handler = TranslationHandler(self.chat_history_panel)
+                        channel.registerObject('main', translation_handler)
+                        self.chat_history_panel.chat_history_text.page().setWebChannel(channel)
+                    
+                    # 延迟执行，确保HTML已经加载完成
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(500, reinit_after_load)
         except Exception as e:
             QMessageBox.critical(
                 self,

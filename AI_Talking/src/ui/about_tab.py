@@ -170,7 +170,7 @@ class AboutTabWidget(QWidget):
         layout.addWidget(self.open_source_label)
 
         # 下载地址
-        self.download_url = "https://gitcode.com/tonyke/AI_Talking/releases/download/v1.0.0/AI_Talking_Setup.exe"
+        self.download_url = "https://gitcode.com/tonyke/AI_Talking/releases/download/v1.0.8/AI_Talking_Setup.exe"
         self.download_label = QLabel()
         self.download_label.setText(
             f"{i18n.translate('download_url')}：<a href='{self.download_url}' style='color: #2196F3; text-decoration: underline;'>{self.download_url}</a>"

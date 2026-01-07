@@ -33,22 +33,9 @@ from PyQt5.QtWidgets import (
     QStyle,
 )
 
-# 本地模块导入
-from utils.chat_history_manager import ChatHistoryManager
+# 本地模块导入 - 只导入必要的基础模块
 from utils.logger_config import get_logger
-from utils.resource_manager import ResourceManager
-from utils.update_service import UpdateManager
 from utils.i18n_manager import i18n
-from utils.config_manager import config_manager  # 导入配置管理器
-
-# UI组件导入
-from ui.about_tab import AboutTabWidget
-from ui.api_settings import APISettingsWidget
-from ui.chat_tab import ChatTabWidget
-from ui.debate_tab import DebateTabWidget
-from ui.discussion_tab import DiscussionTabWidget
-from ui.history_management_tab import HistoryManagementTabWidget
-from ui.splash_screen import SplashScreen
 
 # 获取日志记录器
 logger = get_logger(__name__)
@@ -74,6 +61,9 @@ class AI_Talking_MainWindow(QMainWindow):
 
         # 保存启动画面引用
         self.splash = splash
+
+        # 延迟导入ChatHistoryManager
+        from utils.chat_history_manager import ChatHistoryManager
 
         # 初始化聊天历史管理器
         self.chat_history_manager = ChatHistoryManager()
@@ -101,6 +91,9 @@ class AI_Talking_MainWindow(QMainWindow):
             self.splash.update_progress("正在初始化更新服务...")
             QApplication.processEvents()
 
+        # 延迟导入UpdateManager
+        from utils.update_service import UpdateManager
+
         # 初始化更新管理器
         self.update_manager = UpdateManager(self)
 
@@ -125,6 +118,10 @@ class AI_Talking_MainWindow(QMainWindow):
         """
         设置窗口属性
         """
+        # 延迟导入ResourceManager和config_manager
+        from utils.resource_manager import ResourceManager
+        from utils.config_manager import config_manager
+
         # 设置窗口标题
         self.setWindowTitle(i18n.translate("app_title"))
 
@@ -318,6 +315,10 @@ class AI_Talking_MainWindow(QMainWindow):
         # 聊天标签页
         if current_tab_text == i18n.translate("tab_chat") and self.chat_tab is None:
             logger.info("正在初始化聊天标签页...")
+            # 延迟导入UI组件
+            from ui.api_settings import APISettingsWidget
+            from ui.chat_tab import ChatTabWidget
+            
             # 确保API设置组件已初始化
             if self.api_settings_widget is None:
                 self.api_settings_widget = APISettingsWidget()
@@ -338,6 +339,10 @@ class AI_Talking_MainWindow(QMainWindow):
         # 讨论标签页
         elif current_tab_text == i18n.translate("tab_discussion") and self.discussion_tab is None:
             logger.info("正在初始化讨论标签页...")
+            # 延迟导入UI组件
+            from ui.api_settings import APISettingsWidget
+            from ui.discussion_tab import DiscussionTabWidget
+            
             # 确保API设置组件已初始化
             if self.api_settings_widget is None:
                 self.api_settings_widget = APISettingsWidget()
@@ -356,6 +361,10 @@ class AI_Talking_MainWindow(QMainWindow):
         # 辩论标签页
         elif current_tab_text == i18n.translate("tab_debate") and self.debate_tab is None:
             logger.info("正在初始化辩论标签页...")
+            # 延迟导入UI组件
+            from ui.api_settings import APISettingsWidget
+            from ui.debate_tab import DebateTabWidget
+            
             # 确保API设置组件已初始化
             if self.api_settings_widget is None:
                 self.api_settings_widget = APISettingsWidget()
@@ -374,6 +383,9 @@ class AI_Talking_MainWindow(QMainWindow):
         # 设置标签页
         elif current_tab_text == i18n.translate("tab_settings"):
             logger.info("正在初始化设置标签页...")
+            # 延迟导入UI组件
+            from ui.api_settings import APISettingsWidget
+            
             # 确保API设置组件已初始化
             if self.api_settings_widget is None:
                 self.api_settings_widget = APISettingsWidget()
@@ -394,6 +406,9 @@ class AI_Talking_MainWindow(QMainWindow):
         # 历史管理标签页
         elif current_tab_text == i18n.translate("tab_history") and self.history_management_tab is None:
             logger.info("正在初始化历史管理标签页...")
+            # 延迟导入UI组件
+            from ui.history_management_tab import HistoryManagementTabWidget
+            
             self.history_management_tab = HistoryManagementTabWidget()
             # 替换占位符标签页
             self.tabs.removeTab(index)
@@ -407,6 +422,9 @@ class AI_Talking_MainWindow(QMainWindow):
         # 关于标签页
         elif current_tab_text == i18n.translate("tab_about") and self.about_tab is None:
             logger.info("正在初始化关于标签页...")
+            # 延迟导入UI组件
+            from ui.about_tab import AboutTabWidget
+            
             self.about_tab = AboutTabWidget()
             # 替换占位符标签页
             self.tabs.removeTab(index)
@@ -475,6 +493,11 @@ class AI_Talking_MainWindow(QMainWindow):
         初始化聊天标签页，在启动时自动调用
         """
         logger.info("启动时自动初始化聊天标签页...")
+        
+        # 延迟导入UI组件
+        from ui.api_settings import APISettingsWidget
+        from ui.chat_tab import ChatTabWidget
+        
         # 确保API设置组件已初始化
         if self.api_settings_widget is None:
             self.api_settings_widget = APISettingsWidget()
@@ -499,6 +522,9 @@ class AI_Talking_MainWindow(QMainWindow):
         保存窗口大小和位置，以便下次启动时恢复
         """
         try:
+            # 延迟导入config_manager
+            from utils.config_manager import config_manager
+            
             # 调用父类的resizeEvent方法
             super().resizeEvent(event)
             
@@ -525,6 +551,9 @@ class AI_Talking_MainWindow(QMainWindow):
         保存窗口位置，以便下次启动时恢复
         """
         try:
+            # 延迟导入config_manager
+            from utils.config_manager import config_manager
+            
             # 调用父类的moveEvent方法
             super().moveEvent(event)
             
@@ -547,6 +576,9 @@ class AI_Talking_MainWindow(QMainWindow):
         """
         logger.info("应用程序正在关闭")
         try:
+            # 延迟导入config_manager
+            from utils.config_manager import config_manager
+            
             # 保存聊天历史
             self.chat_history_manager.save_history()
             
@@ -576,9 +608,16 @@ def main():
     """
     应用程序入口函数
     """
+    # 设置Qt属性，解决QtWebEngine初始化问题
+    from PyQt5.QtCore import QCoreApplication, Qt
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+    
     # 创建应用程序实例
     app = QApplication(sys.argv)
 
+    # 延迟导入SplashScreen
+    from ui.splash_screen import SplashScreen
+    
     # 创建并显示启动画面
     splash = SplashScreen()
     splash.center()
@@ -606,8 +645,21 @@ def main():
     # 隐藏启动画面
     splash.finish(window)
 
+    # 启动线程池
+    from utils.thread_pool import thread_pool
+    thread_pool.start()
+    
+    # 启动内存监控
+    from utils.memory_monitor import memory_monitor
+    memory_monitor.start(interval=30)  # 每30秒监控一次
+    
     # 运行应用程序
-    sys.exit(app.exec_())
+    try:
+        sys.exit(app.exec_())
+    finally:
+        # 关闭应用程序前停止线程池和内存监控
+        thread_pool.stop(wait=False)
+        memory_monitor.stop()
 
 
 if __name__ == "__main__":

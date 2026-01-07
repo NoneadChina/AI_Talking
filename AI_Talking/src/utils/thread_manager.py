@@ -405,17 +405,17 @@ class SummaryThread(BaseAITaskThread):
         """
         try:
             # 确定发送者名称（专家AI3或裁判AI3）
-            sender_name = "专家AI3"  # 默认使用专家AI3
+            sender_name = i18n.translate("expert_ai3")  # 默认使用专家AI3
 
             # 1. 检查系统提示词内容，确定总结者类型
             for msg in self.messages:
                 if msg["role"] == "system":
                     content = msg["content"]
                     if "辩论裁判AI" in content:
-                        sender_name = "裁判AI3"
+                        sender_name = i18n.translate("judge_ai3")
                         break
                     elif "学术讨论分析师" in content:
-                        sender_name = "专家AI3"
+                        sender_name = i18n.translate("expert_ai3")
                         break
 
             # 2. 进一步检查系统提示词内容，确认总结者类型
@@ -428,7 +428,7 @@ class SummaryThread(BaseAITaskThread):
                         or "胜负裁决标准" in content
                         or "辩论总结" in content
                     ):
-                        sender_name = "裁判AI3"
+                        sender_name = i18n.translate("judge_ai3")
                         break
                     # 如果包含专家特定的系统提示词内容，使用专家AI3
                     elif (
@@ -436,7 +436,7 @@ class SummaryThread(BaseAITaskThread):
                         or "讨论质量评估" in content
                         or "讨论概览" in content
                     ):
-                        sender_name = "专家AI3"
+                        sender_name = i18n.translate("expert_ai3")
                         break
 
             # 发送开始总结的状态信号
@@ -713,10 +713,10 @@ class DebateThread(BaseAITaskThread):
                         break  # 检查线程是否被停止
 
                     # 发送轮次信息
-                    self.update_signal.emit("系统", f"=== {i18n.translate('debate_round', round_num=round_num)} ===")
+                    self.update_signal.emit(i18n.translate("system"), f"=== {i18n.translate('debate_round', round_num=round_num)} ===")
                     # 将轮次信息添加到辩论历史
                     self.debate_history_messages.append(
-                        {"role": "system", "content": f"{i18n.translate('debate_round', round_num=round_num)}"}
+                        {"role": i18n.translate("system"), "content": f"{i18n.translate('debate_round', round_num=round_num)}"}
                     )
 
                     # 正方发言阶段
@@ -730,14 +730,14 @@ class DebateThread(BaseAITaskThread):
                         self.temperature,
                         previous_response="",
                         stream=True,
-                        sender_prefix="正方",
+                        sender_prefix=i18n.translate("pro_ai1"),
                     )
                     if self.is_stopped():
                         break  # 检查线程是否被停止
 
                     # 将正方发言添加到辩论历史
                     self.debate_history_messages.append(
-                        {"role": f"正方{self.model1_name}", "content": model1_response}
+                        {"role": f"{i18n.translate('pro_ai1')} {self.model1_name}", "content": model1_response}
                     )
 
                     if self.is_stopped():
@@ -757,14 +757,14 @@ class DebateThread(BaseAITaskThread):
                         self.temperature,
                         previous_response=model1_response,
                         stream=True,
-                        sender_prefix="反方",
+                        sender_prefix=i18n.translate("con_ai2"),
                     )
                     if self.is_stopped():
                         break  # 检查线程是否被停止
 
                     # 将反方发言添加到辩论历史
                     self.debate_history_messages.append(
-                        {"role": f"反方{self.model2_name}", "content": model2_response}
+                        {"role": f"{i18n.translate('con_ai2')} {self.model2_name}", "content": model2_response}
                     )
 
                     if self.is_stopped():
@@ -775,9 +775,9 @@ class DebateThread(BaseAITaskThread):
             self.status_signal.emit(i18n.translate('debate_ended_with_time', total_time=f'{total_time:.2f}'))
 
             # 发送辩论结束消息
-            self.update_signal.emit("系统", f"=== {i18n.translate('debate_ended')} ===")
+            self.update_signal.emit(i18n.translate("system"), f"=== {i18n.translate('debate_ended')} ===")
             self.debate_history_messages.append(
-                {"role": "system", "content": i18n.translate('debate_ended')}
+                {"role": i18n.translate("system"), "content": i18n.translate('debate_ended')}
             )
 
             # 发送辩论结束信号
@@ -888,7 +888,7 @@ class DiscussionThread(BaseAITaskThread):
         self.discussion_history = []
 
     def _get_ai_response(
-        self, model_name, api, messages, stream=False, sender_prefix="学者AI1"
+        self, model_name, api, messages, stream=False, sender_prefix=None
     ):
         """
         获取AI模型的响应，支持流式输出
@@ -904,6 +904,10 @@ class DiscussionThread(BaseAITaskThread):
             str: AI回复内容
         """
         try:
+            # 设置默认发送者前缀
+            if sender_prefix is None:
+                sender_prefix = i18n.translate("scholar_ai1")
+            
             # 实时获取最新温度值
             current_temperature = self.temperature
             if self.config_panel:
@@ -982,10 +986,10 @@ class DiscussionThread(BaseAITaskThread):
             # 发送讨论开始的状态信息
             self.status_signal.emit(f"两个AI开始围绕主题 '{self.topic}' 进行讨论")
             self.status_signal.emit(
-                f"学者AI1: {self.model1_name} (API: {self.model1_api})"
+                f"{i18n.translate('scholar_ai1')}: {self.model1_name} (API: {self.model1_api})"
             )
             self.status_signal.emit(
-                f"学者AI2: {self.model2_name} (API: {self.model2_api})"
+                f"{i18n.translate('scholar_ai2')}: {self.model2_name} (API: {self.model2_api})"
             )
             self.status_signal.emit(f"讨论轮数: {self.rounds} 轮")
 
@@ -1014,12 +1018,12 @@ class DiscussionThread(BaseAITaskThread):
                 )
 
                 # 发送轮次信息
-                self.update_signal.emit("系统", f"=== {i18n.translate('discussion_round', round_num=round_num)} ===")
+                self.update_signal.emit(i18n.translate("system"), f"=== {i18n.translate('discussion_round', round_num=round_num)} ===")
 
                 # ============================ AI1发言阶段 ============================
                 try:
                     # 更新状态，显示AI1正在发言
-                    self.status_signal.emit(f"学者AI1 {self.model1_name} 正在发言...")
+                    self.status_signal.emit(f"{i18n.translate('scholar_ai1')} {self.model1_name} 正在发言...")
 
                     # 构建AI1的系统提示词，合并公共提示词和AI1专用提示词
                     ai1_system_prompt = discussion_common_prompt
@@ -1049,7 +1053,7 @@ class DiscussionThread(BaseAITaskThread):
                         self.model1_api,
                         ai1_messages,
                         stream=True,
-                        sender_prefix="学者AI1",
+                        sender_prefix=i18n.translate("scholar_ai1"),
                     )
 
                     # 检查是否需要停止线程
@@ -1071,7 +1075,7 @@ class DiscussionThread(BaseAITaskThread):
                 # ============================ AI2发言阶段 ============================
                 try:
                     # 更新状态，显示AI2正在发言
-                    self.status_signal.emit(f"学者AI2 {self.model2_name} 正在发言...")
+                    self.status_signal.emit(f"{i18n.translate('scholar_ai2')} {self.model2_name} 正在发言...")
 
                     # 构建AI2的系统提示词，合并公共提示词和AI2专用提示词
                     ai2_system_prompt = discussion_common_prompt
@@ -1101,7 +1105,7 @@ class DiscussionThread(BaseAITaskThread):
                         self.model2_api,
                         ai2_messages,
                         stream=True,
-                        sender_prefix="学者AI2",
+                        sender_prefix=i18n.translate("scholar_ai2"),
                     )
 
                     # 检查是否需要停止线程
@@ -1127,7 +1131,7 @@ class DiscussionThread(BaseAITaskThread):
             self.status_signal.emit(i18n.translate('discussion_ended_with_time', total_time=f'{total_time:.2f}'))
 
             # 添加讨论结束消息到讨论历史
-            self.update_signal.emit("系统", f"=== {i18n.translate('discussion_ended')} ===")
+            self.update_signal.emit(i18n.translate("system"), f"=== {i18n.translate('discussion_ended')} ===")
             self.finished_signal.emit()
         except Exception as e:
             # 统一处理所有异常

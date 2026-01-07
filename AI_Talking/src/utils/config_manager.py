@@ -32,7 +32,11 @@ def get_app_data_dir():
 
 
 class ConfigManager:
-    """配置文件管理器类"""
+    """配置文件管理器类
+    
+    该类负责处理配置文件的加载、保存和访问，支持从YAML文件加载配置，
+    并提供默认值、环境变量覆盖和点号分隔的路径访问功能。
+    """
     
     def __init__(self, config_file_path: Optional[str] = None):
         """
@@ -58,29 +62,32 @@ class ConfigManager:
                 current_dir = os.path.dirname(current_dir)  # 再向上一级目录到项目根目录
                 config_file_path = os.path.join(current_dir, 'config.yaml')
         
-        self.config_file_path = config_file_path
-        self.config: Dict[str, Any] = {}
-        self._load_default_config()
-        self.load_config()
+        self.config_file_path = config_file_path  # 配置文件路径
+        self.config: Dict[str, Any] = {}  # 配置数据字典
+        self._load_default_config()  # 加载默认配置
+        self.load_config()  # 从文件加载配置
     
     def _load_default_config(self) -> None:
         """
         加载默认配置
+        
+        此方法定义了应用程序的默认配置值，包括应用基本信息、API设置、
+        聊天配置、讨论配置、辩论配置、翻译设置、语言设置、日志配置和更新设置。
         """
         # 获取应用数据目录，用于设置日志文件的绝对路径
         app_data_dir = get_app_data_dir()
         
         self.config = {
             'app': {
-                'name': 'AI Talking',
-                'version': '0.4.1',
-                'debug': False,
-                'language': 'auto',  # 'auto', 'zh', 'en'
+                'name': 'AI Talking',  # 应用名称
+                'version': '0.4.1',  # 应用版本
+                'debug': False,  # 调试模式开关
+                'language': 'auto',  # 语言设置，'auto'表示自动检测
                 'window': {
-                    'x': 100,
-                    'y': 100,
-                    'width': 900,
-                    'height': 1000
+                    'x': 100,  # 窗口初始X坐标
+                    'y': 100,  # 窗口初始Y坐标
+                    'width': 900,  # 窗口初始宽度
+                    'height': 1000  # 窗口初始高度
                 }
             },
             'api': {
@@ -94,7 +101,7 @@ class ConfigManager:
                 'ollama_base_url': 'http://localhost:11434'  # Ollama本地基础URL
             },
             'chat': {
-                'max_history_length': 50,  # 最大历史消息数
+                'max_history_length': 50,  # 聊天历史最大消息数
                 'auto_save': True,  # 是否自动保存聊天历史
                 'save_interval': 30,  # 自动保存间隔（秒）
                 'system_prompt': ''  # 聊天系统提示词
@@ -107,8 +114,8 @@ class ConfigManager:
             },
             'debate': {
                 'system_prompt': '',  # 辩论共享系统提示词
-                'ai1_prompt': '',  # 辩论AI1系统提示词
-                'ai2_prompt': '',  # 辩论AI2系统提示词
+                'ai1_prompt': '',  # 辩论AI1系统提示词（正方）
+                'ai2_prompt': '',  # 辩论AI2系统提示词（反方）
                 'judge_ai3_prompt': ''  # 裁判AI3系统提示词
             },
             'translation': {
@@ -117,11 +124,11 @@ class ConfigManager:
                 'system_prompt': '你是一个好用的翻译助手。请将我输入的任何一种语言（当前气泡内容），翻译我需要的语言(需要的语言从翻译菜单选择的语言获取），请直接翻译成例子里的语言即可，我们不做任何的问答，我发给你所有的话都是需要翻译的内容，你只需要回答翻译结果。'  # 翻译系统提示词
             },
             'language': {
-                'selection': '简体中文'  # 语言选择
+                'selection': '简体中文'  # 默认语言选择
             },
             'logging': {
                 'level': 'INFO',  # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL
-                'file_path': os.path.join(app_data_dir, 'logs/app.log'),  # 日志文件路径（绝对路径）
+                'file_path': os.path.join(app_data_dir, 'logs/app.log'),  # 日志文件路径
                 'max_bytes': 10485760,  # 单个日志文件最大字节数（10MB）
                 'backup_count': 5  # 保留的备份日志文件数
             },
@@ -135,6 +142,9 @@ class ConfigManager:
     def load_config(self) -> None:
         """
         从配置文件加载配置
+        
+        如果配置文件存在，则加载并合并到当前配置中；
+        如果配置文件不存在，则创建默认配置文件。
         """
         if os.path.exists(self.config_file_path):
             try:
@@ -142,7 +152,7 @@ class ConfigManager:
                     user_config = yaml.safe_load(f)
                     
                 if user_config:
-                    # 使用字典递归合并配置
+                    # 使用字典递归合并配置，用户配置会覆盖默认配置
                     self._merge_configs(self.config, user_config)
                     
             except Exception as e:
@@ -156,8 +166,11 @@ class ConfigManager:
         递归合并两个配置字典
         
         Args:
-            base: 基础配置字典
+            base: 基础配置字典，将被更新
             update: 要合并的更新配置字典
+        
+        注意：如果两个字典中存在相同的键，且值都是字典，则递归合并；
+        否则，直接用update中的值覆盖base中的值。
         """
         for key, value in update.items():
             if key in base and isinstance(base[key], dict) and isinstance(value, dict):
@@ -170,6 +183,8 @@ class ConfigManager:
     def save_config(self) -> None:
         """
         保存配置到文件
+        
+        确保配置文件所在目录存在，然后将当前配置保存到YAML文件中。
         """
         # 确保目录存在
         os.makedirs(os.path.dirname(self.config_file_path), exist_ok=True)
@@ -185,11 +200,15 @@ class ConfigManager:
         获取指定键的配置值，支持点号分隔的路径
         
         Args:
-            key_path: 配置键路径，如 'api.timeout'
-            default: 默认值，如果键不存在则返回
+            key_path: 配置键路径，如 'api.timeout' 表示获取api配置下的timeout值
+            default: 默认值，如果键不存在则返回此值
             
         Returns:
             配置值或默认值
+            
+        示例:
+            config_manager.get('api.timeout')  # 获取API超时时间
+            config_manager.get('app.window.width', 800)  # 获取窗口宽度，默认800
         """
         keys = key_path.split('.')
         value = self.config
@@ -211,22 +230,28 @@ class ConfigManager:
             value: 新的配置值
             
         Returns:
-            是否设置成功
+            bool: 是否设置成功
+            
+        示例:
+            config_manager.set('api.timeout', 600)  # 设置API超时时间为600秒
+            config_manager.set('app.language', 'zh')  # 设置应用语言为中文
         """
         keys = key_path.split('.')
         config = self.config
         
-        # 导航到目标键的父级
+        # 导航到目标键的父级字典
         for key in keys[:-1]:
             if key not in config:
+                # 如果中间键不存在，创建空字典
                 config[key] = {}
             elif not isinstance(config[key], dict):
+                # 如果中间键不是字典，无法设置子键
                 return False
             config = config[key]
         
-        # 设置值
+        # 设置最终键的值
         config[keys[-1]] = value
         return True
 
-# 创建全局配置管理器实例
+# 创建全局配置管理器实例，供其他模块直接使用
 config_manager = ConfigManager()

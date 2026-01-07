@@ -36,12 +36,14 @@ class ChatMessageWidget:
         rendered_content = markdown.markdown(content)
 
         # 根据发送者设置不同的样式
-        if sender.lower() == "user" or sender == "用户":
+        user_text = i18n.translate('user')
+        system_text = i18n.translate('system')
+        if sender.lower() == "user" or sender == user_text:
             message_class = "user-message"
             icon_char = "👤"
             sender_color = "#0d47a1"
             placement = "right"
-        elif sender == "系统":
+        elif sender == system_text:
             message_class = "system-message"
             icon_char = "📢"
             sender_color = "#616161"
