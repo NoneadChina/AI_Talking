@@ -31,8 +31,10 @@ class ChatHistoryItem(TypedDict):
     - topic: 聊天主题
     - model1: 模型1名称
     - model2: 模型2名称（可选，单聊时为None）
+    - model3: 模型3名称（可选，讨论/辩论时使用）
     - api1: 模型1使用的API提供商
     - api2: 模型2使用的API提供商
+    - api3: 模型3使用的API提供商
     - rounds: 聊天轮数
     - chat_content: 聊天内容
     - start_time: 开始时间
@@ -41,43 +43,65 @@ class ChatHistoryItem(TypedDict):
     topic: str
     model1: str
     model2: Optional[str]
+    model3: Optional[str]
     api1: str
     api2: str
+    api3: str
     rounds: int
     chat_content: str
     start_time: str
     end_time: str
 
 
-class ChatHistoryLoadWorker(QThread):
+class ChatHistoryWorker(QThread):
     """
-    异步加载聊天历史的工作线程
+    异步处理聊天历史的工作线程
     
-    该类用于在后台线程中加载聊天历史，避免阻塞主线程，
-    提高应用程序的响应性能。
+    该类用于在后台线程中处理聊天历史的加载和保存，
+    避免阻塞主线程，提高应用程序的响应性能。
     """
 
-    # 定义信号 - PyQt5的pyqtSignal不支持List[ChatHistoryItem]这种类型注解格式
+    # 定义信号
     finished = pyqtSignal(list)  # 加载完成信号，传递加载的聊天历史列表
+    saved = pyqtSignal(bool)  # 保存完成信号，传递保存结果
     error = pyqtSignal(str)  # 错误信号，传递错误信息字符串
 
-    def __init__(self, history_file: str):
+    def __init__(self, history_file: str, operation: str = "load", history: Optional[List[ChatHistoryItem]] = None, force: bool = False):
         """
         初始化工作线程
 
         Args:
             history_file (str): 聊天历史文件路径
+            operation (str): 操作类型，可选值: "load" 或 "save"
+            history (Optional[List[ChatHistoryItem]]): 要保存的聊天历史列表
+            force (bool): 是否强制保存
         """
         super().__init__()
         self.history_file = history_file  # 保存聊天历史文件路径
+        self.operation = operation  # 操作类型
+        self.history = history  # 要保存的聊天历史列表
+        self.force = force  # 是否强制保存
 
     def run(self):
         """
-        线程运行函数，执行异步加载
-        
-        在线程中执行文件读取和解析操作，
-        处理可能出现的各种异常，
-        通过信号返回结果或错误信息。
+        线程运行函数，执行异步加载或保存操作
+        """
+        try:
+            if self.operation == "load":
+                self._load_history()
+            elif self.operation == "save":
+                self._save_history()
+        except Exception as e:
+            logger.error(f"异步处理聊天历史失败: {str(e)}")
+            self.error.emit(f"处理失败: {str(e)}")
+            if self.operation == "load":
+                self.finished.emit([])
+            elif self.operation == "save":
+                self.saved.emit(False)
+
+    def _load_history(self):
+        """
+        异步加载聊天历史
         """
         try:
             logger.info(f"异步加载聊天历史: {self.history_file}")
@@ -127,42 +151,66 @@ class ChatHistoryLoadWorker(QThread):
             self.error.emit(f"加载失败: {str(e)}")
             self.finished.emit([])
 
+    def _save_history(self):
+        """
+        异步保存聊天历史
+        """
+        try:
+            logger.info(f"异步保存聊天历史到: {self.history_file}")
+            # 直接保存传入的历史记录
+            if self.history is not None:
+                # 使用更高效的JSON序列化方式，去掉缩进以减小文件大小
+                with open(self.history_file, "w", encoding="utf-8") as f:
+                    json.dump(self.history, f, ensure_ascii=False, separators=(',', ':'))
+                logger.info(f"已异步保存 {len(self.history)} 条历史记录到 {self.history_file}")
+                self.saved.emit(True)
+            else:
+                logger.warning("没有历史记录可保存")
+                self.saved.emit(False)
+        except PermissionError as e:
+            logger.error(
+                f"权限错误: 无法写入文件 {self.history_file}，错误信息: {str(e)}"
+            )
+            self.error.emit(f"权限错误: {str(e)}")
+            self.saved.emit(False)
+        except IOError as e:
+            logger.error(
+                f"I/O错误: 写入文件 {self.history_file} 失败，错误信息: {str(e)}"
+            )
+            self.error.emit(f"I/O错误: {str(e)}")
+            self.saved.emit(False)
+        except TypeError as e:
+            logger.error(
+                f"类型错误: 聊天历史数据包含不可序列化的类型，错误信息: {str(e)}"
+            )
+            self.error.emit(f"类型错误: {str(e)}")
+            self.saved.emit(False)
+        except Exception as e:
+            logger.error(f"异步保存聊天历史失败: {str(e)}")
+            self.error.emit(f"保存失败: {str(e)}")
+            self.saved.emit(False)
+
 
 class ChatHistoryManager:
     """
-    聊天历史管理类，负责聊天历史的保存、加载和导出功能
+    聊天历史管理类，负责聊天历史的完整生命周期管理
+    
+    该类实现了以下核心功能：
+    1. 异步加载聊天历史，避免阻塞主线程
+    2. 缓存机制，减少文件I/O操作
+    3. 分页获取历史记录，优化内存使用
+    4. 历史记录的CRUD操作
+    5. 聊天历史导出功能
+    6. 自动修剪旧历史记录，保持性能
+    
+    设计特点：
+    - 惰性加载：只有在需要时才加载历史记录
+    - 缓存优化：避免重复读取文件
+    - 异步处理：耗时操作在后台线程执行
+    - 优化的保存逻辑：只在有修改时才写入文件
     """
 
-    def __init__(self, history_file: str = "chat_histories.json") -> None:
-        """
-        初始化聊天历史管理器
 
-        Args:
-            history_file (str, optional): 聊天历史文件路径. Defaults to 'chat_histories.json'.
-        """
-        from .config_manager import get_app_data_dir
-
-        # 确定应用程序的数据目录，使用统一的get_app_data_dir函数
-        app_data_dir = get_app_data_dir()
-
-        # 确保应用程序数据目录存在
-        os.makedirs(app_data_dir, exist_ok=True)
-
-        # 使用应用程序数据目录作为聊天历史文件的保存位置
-        self.history_file: str = os.path.join(app_data_dir, history_file)
-        self.max_history_size: int = 1000  # 限制最大历史记录数量，防止内存占用过高
-        self._loaded_history_count: int = 0  # 记录已加载的历史记录数量
-        
-        # 缓存机制 - 优化内存使用
-        self._history_cache: List[ChatHistoryItem] = []  # 缓存已加载的历史记录
-        self._is_cache_loaded: bool = False  # 标记缓存是否已加载
-        self._modified_indices: set[int] = set()  # 标记已修改的记录索引
-        
-        # 惰性加载标志 - 只有在需要时才加载历史记录
-        self._lazy_load_triggered: bool = False
-        
-        # 初始化聊天历史列表 - 不立即加载，改为惰性加载
-        self.chat_histories: List[ChatHistoryItem] = []
 
     def async_load_history(
         self,
@@ -177,7 +225,7 @@ class ChatHistoryManager:
             error_callback (Optional[Callable[[str], None]], optional): 加载错误时的回调函数. Defaults to None.
         """
         # 创建工作线程
-        self.load_worker = ChatHistoryLoadWorker(self.history_file)
+        self.load_worker = ChatHistoryWorker(self.history_file, operation="load")
 
         # 连接信号
         self.load_worker.finished.connect(self._on_async_load_finished)
@@ -189,6 +237,42 @@ class ChatHistoryManager:
 
         # 启动线程
         self.load_worker.start()
+        
+    def async_save_history(
+        self,
+        history: Optional[List[ChatHistoryItem]] = None,
+        force: bool = False,
+        callback: Optional[Callable[[bool], None]] = None,
+        error_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        """
+        异步保存聊天历史
+
+        Args:
+            history (Optional[List[ChatHistoryItem]]): 要保存的聊天历史列表
+            force (bool): 是否强制保存
+            callback (Optional[Callable[[bool], None]]): 保存完成后的回调函数
+            error_callback (Optional[Callable[[str], None]]): 保存错误时的回调函数
+        """
+        # 如果没有提供历史记录，使用当前管理的历史记录
+        save_history = history if history is not None else self._history_cache
+        
+        # 创建工作线程
+        self.save_worker = ChatHistoryWorker(
+            self.history_file,
+            operation="save",
+            history=save_history,
+            force=force
+        )
+
+        # 连接信号
+        if callback:
+            self.save_worker.saved.connect(callback)
+        if error_callback:
+            self.save_worker.error.connect(error_callback)
+
+        # 启动线程
+        self.save_worker.start()
 
     def _on_async_load_finished(self, chat_histories: List[ChatHistoryItem]) -> None:
         """
@@ -248,15 +332,18 @@ class ChatHistoryManager:
             logger.error(f"加载聊天历史失败: {str(e)}")
             return []
     
-    def load_history(self) -> List[ChatHistoryItem]:
+    def load_history(self, force_reload: bool = False) -> List[ChatHistoryItem]:
         """
         同步从缓存加载聊天历史
         仅用于需要立即获取历史记录的场景
 
+        Args:
+            force_reload (bool): 是否强制重新加载历史记录
+
         Returns:
             List[Dict]: 聊天历史列表
         """
-        if not self._is_cache_loaded:
+        if not self._is_cache_loaded or force_reload:
             self._load_full_history()
         
         # 标记为已触发惰性加载
@@ -290,14 +377,17 @@ class ChatHistoryManager:
         logger.info(f"返回第 {page} 页历史记录，共 {len(paginated)} 条")
         return paginated
     
-    def get_history_count(self) -> int:
+    def get_history_count(self, force_reload: bool = False) -> int:
         """
         获取历史记录总数
+
+        Args:
+            force_reload (bool): 是否强制重新加载历史记录
 
         Returns:
             int: 历史记录总数
         """
-        if not self._is_cache_loaded:
+        if not self._is_cache_loaded or force_reload:
             self._load_full_history()
         
         return len(self._history_cache)
@@ -317,18 +407,62 @@ class ChatHistoryManager:
                 f"已修剪 {old_count} 条旧历史记录，当前保留 {len(self._history_cache)} 条"
             )
 
-    def save_history(self, history: Optional[List[ChatHistoryItem]] = None) -> bool:
+    def __init__(self, history_file: str = "chat_histories.json") -> None:
+        """
+        初始化聊天历史管理器
+
+        Args:
+            history_file (str, optional): 聊天历史文件路径. Defaults to 'chat_histories.json'.
+        """
+        from .config_manager import get_app_data_dir
+
+        # 确定应用程序的数据目录，使用统一的get_app_data_dir函数
+        app_data_dir = get_app_data_dir()
+
+        # 确保应用程序数据目录存在，如果不存在则创建
+        os.makedirs(app_data_dir, exist_ok=True)
+
+        # 使用应用程序数据目录作为聊天历史文件的保存位置
+        self.history_file: str = os.path.join(app_data_dir, history_file)
+        self.max_history_size: int = 1000  # 限制最大历史记录数量，防止内存占用过高
+        self._loaded_history_count: int = 0  # 记录已加载的历史记录数量
+        
+        # 缓存机制 - 优化内存使用和文件I/O
+        self._history_cache: List[ChatHistoryItem] = []  # 缓存已加载的历史记录
+        self._is_cache_loaded: bool = False  # 标记缓存是否已加载
+        self._modified_indices: set[int] = set()  # 标记已修改的记录索引，用于优化保存操作
+        
+        # 惰性加载标志 - 只有在需要时才加载历史记录，提高启动速度
+        self._lazy_load_triggered: bool = False
+        
+        # 初始化聊天历史列表 - 不立即加载，改为惰性加载
+        self.chat_histories: List[ChatHistoryItem] = []
+        
+        # LRU缓存 - 用于缓存最近访问的历史记录
+        from collections import OrderedDict
+        self._history_lru_cache: OrderedDict[str, ChatHistoryItem] = OrderedDict()
+        self.lru_cache_size: int = 50  # LRU缓存大小
+        
+        # 批量操作标志和队列
+        self._batch_operation: bool = False  # 是否处于批量操作模式
+        self._batch_queue: List[Callable[[], None]] = []  # 批量操作队列
+
+    def save_history(self, history: Optional[List[ChatHistoryItem]] = None, force: bool = False, async_save: bool = False, callback: Optional[Callable[[bool], None]] = None, error_callback: Optional[Callable[[str], None]] = None) -> bool:
         """
         保存聊天历史到文件
 
         Args:
             history (Optional[List[Dict]], optional): 要保存的聊天历史列表. Defaults to None, 表示保存当前管理的历史.
+            force (bool): 是否强制保存，忽略优化逻辑. Defaults to False.
+            async_save (bool): 是否使用异步保存. Defaults to False.
+            callback (Optional[Callable[[bool], None]]): 异步保存完成后的回调函数
+            error_callback (Optional[Callable[[str], None]]): 异步保存错误时的回调函数
 
         Returns:
-            bool: 保存成功返回True，失败返回False
+            bool: 同步保存时返回保存结果，异步保存时立即返回True
         """
         try:
-            save_force = False
+            save_force = force
             if history is not None:
                 self.chat_histories = history
                 self._history_cache = history
@@ -354,7 +488,12 @@ class ChatHistoryManager:
             # 同步chat_histories和缓存
             self.chat_histories = self._history_cache
             
-            # 使用更高效的JSON序列化方式，去掉缩进以减小文件大小
+            # 如果是异步保存，调用异步保存方法
+            if async_save:
+                self.async_save_history(self._history_cache, force=save_force, callback=callback, error_callback=error_callback)
+                return True
+            
+            # 同步保存，直接写入文件
             with open(self.history_file, "w", encoding="utf-8") as f:
                 json.dump(self._history_cache, f, ensure_ascii=False, separators=(',', ':'))
 
@@ -383,6 +522,227 @@ class ChatHistoryManager:
         except Exception as e:
             logger.error(f"保存聊天历史失败: {str(e)}")
             return False
+            
+    def get_history_by_topic(self, topic: str) -> Optional[ChatHistoryItem]:
+        """
+        根据主题获取聊天历史，使用LRU缓存优化
+
+        Args:
+            topic (str): 讨论主题
+
+        Returns:
+            Optional[Dict]: 匹配的聊天历史记录，不存在返回None
+        """
+        # 先从LRU缓存中查找
+        if topic in self._history_lru_cache:
+            # 移动到缓存末尾表示最近访问
+            self._history_lru_cache.move_to_end(topic)
+            return self._history_lru_cache[topic]
+        
+        # 缓存中没有，从历史记录中查找
+        for history in self.chat_histories:
+            if history["topic"] == topic:
+                # 添加到LRU缓存
+                self._history_lru_cache[topic] = history
+                # 如果缓存已满，移除最久未使用的项
+                if len(self._history_lru_cache) > self.lru_cache_size:
+                    self._history_lru_cache.popitem(last=False)
+                return history
+        return None
+        
+    def start_batch_operation(self) -> None:
+        """
+        开始批量操作
+        批量操作期间，所有修改操作都会被加入队列，直到调用end_batch_operation才会执行
+        """
+        self._batch_operation = True
+        self._batch_queue = []
+        logger.info("开始批量操作")
+        
+    def end_batch_operation(self, execute: bool = True) -> bool:
+        """
+        结束批量操作
+        
+        Args:
+            execute (bool): 是否执行批量操作队列中的所有操作
+            
+        Returns:
+            bool: 操作执行结果
+        """
+        try:
+            if execute and self._batch_queue:
+                logger.info(f"执行批量操作，队列大小: {len(self._batch_queue)}")
+                for operation in self._batch_queue:
+                    operation()
+                logger.info("批量操作执行完成")
+            self._batch_operation = False
+            self._batch_queue.clear()
+            return True
+        except Exception as e:
+            logger.error(f"执行批量操作失败: {str(e)}")
+            return False
+        
+    def add_history(
+        self,
+        func_type: Literal["聊天", "讨论", "辩论", "批量"],
+        topic: str,
+        model1_name: str,
+        model2_name: Optional[str],
+        api1: str,
+        api2: str,
+        rounds: int,
+        chat_content: str,
+        start_time: str,
+        end_time: str,
+        model3_name: Optional[str] = None,
+        api3: str = "",
+        is_new_chat: bool = False,
+    ) -> bool:
+        """
+        添加聊天历史记录，根据不同功能类型采用不同的保存策略
+        
+        关键策略：
+        - 聊天功能：只保存一条最新记录，每次更新（除非用户明确创建新聊天）
+        - 讨论、辩论、批量功能：每次都创建新记录
+        
+        这种设计考虑了不同功能的使用场景：
+        - 聊天功能通常是连续的对话，用户更关心当前会话
+        - 讨论、辩论等功能是独立的会话，用户需要保存所有历史
+
+        Args:
+            func_type (Literal["聊天", "讨论", "辩论", "批量"]): 功能类型
+            topic (str): 讨论主题
+            model1_name (str): 模型1名称
+            model2_name (Optional[str]): 模型2名称（聊天功能可能为None）
+            api1 (str): 模型1 API类型
+            api2 (str): 模型2 API类型
+            rounds (int): 对话轮数
+            chat_content (str): 聊天内容，通常是HTML格式
+            start_time (str): 开始时间，格式为"YYYY-MM-DD HH:MM:SS"
+            end_time (str): 结束时间，格式为"YYYY-MM-DD HH:MM:SS"
+            model3_name (Optional[str]): 模型3名称（讨论/辩论时使用）
+            api3 (str): 模型3 API类型
+            is_new_chat (bool): 是否是新聊天，True表示需要创建新记录
+
+        Returns:
+            bool: 添加成功返回True，失败返回False
+        """
+        # 批量操作处理
+        if self._batch_operation:
+            # 将操作加入批量队列
+            def batch_add():
+                return self._add_history_internal(
+                    func_type, topic, model1_name, model2_name, api1, api2, rounds, chat_content, start_time, end_time, model3_name, api3, is_new_chat
+                )
+            self._batch_queue.append(batch_add)
+            return True
+        
+        # 非批量操作，直接执行
+        return self._add_history_internal(
+            func_type, topic, model1_name, model2_name, api1, api2, rounds, chat_content, start_time, end_time, model3_name, api3, is_new_chat
+        )
+        
+    def _add_history_internal(
+        self,
+        func_type: Literal["聊天", "讨论", "辩论", "批量"],
+        topic: str,
+        model1_name: str,
+        model2_name: Optional[str],
+        api1: str,
+        api2: str,
+        rounds: int,
+        chat_content: str,
+        start_time: str,
+        end_time: str,
+        model3_name: Optional[str] = None,
+        api3: str = "",
+        is_new_chat: bool = False,
+    ) -> bool:
+        """
+        内部添加历史记录的实现方法
+        """
+        # 确保缓存已加载，避免在操作过程中加载导致的不一致
+        if not self._is_cache_loaded:
+            self._load_full_history()
+        
+        # 生成格式化的主题名称，包含功能类型和时间戳
+        formatted_topic = self.generate_formatted_topic(func_type, topic)
+
+        # 聊天功能特殊处理：只保存最新的聊天记录，每次更新
+        if func_type == "聊天":
+            # 构建聊天历史记录对象
+            chat_history = {
+                "topic": formatted_topic,
+                "model1": model1_name,
+                "model2": model2_name,
+                "model3": model3_name,
+                "api1": api1,
+                "api2": api2,
+                "api3": api3,
+                "rounds": rounds,
+                "chat_content": chat_content,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+            
+            # 查找最新的聊天历史记录索引
+            ongoing_chat_index = -1
+            
+            # 获取当前语言下的聊天功能翻译
+            translated_chat = i18n.translate("chat")
+            expected_prefix = f"【{translated_chat}】"
+            
+            # 从后往前遍历缓存，找到最新的一条聊天记录
+            for i in range(len(self._history_cache) - 1, -1, -1):
+                if self._history_cache[i]["topic"].startswith(expected_prefix):
+                    ongoing_chat_index = i
+                    break
+            
+            # 判断是否需要创建新的聊天记录：
+            # 1. 当没有现有聊天记录时
+            # 2. 当用户明确要求创建新聊天时（is_new_chat=True）
+            if ongoing_chat_index == -1 or is_new_chat:
+                # 添加新的聊天记录到缓存末尾
+                self._history_cache.append(chat_history)
+                # 标记新添加的记录为已修改
+                self._modified_indices.add(len(self._history_cache) - 1)
+                logger.info(f"创建新的聊天历史记录，索引: {len(self._history_cache) - 1}")
+            else:
+                # 更新现有的聊天历史记录
+                self._history_cache[ongoing_chat_index] = chat_history
+                # 标记更新的记录为已修改
+                self._modified_indices.add(ongoing_chat_index)
+                logger.info(f"更新现有的聊天历史记录，索引: {ongoing_chat_index}")
+            
+            # 同步更新公开的chat_histories属性
+            self.chat_histories = self._history_cache
+            # 保存到文件
+            return self.save_history()
+        
+        # 讨论、辩论、批量功能：每次都添加新记录
+        history = {
+            "topic": formatted_topic,
+            "model1": model1_name,
+            "model2": model2_name,
+            "model3": model3_name,
+            "api1": api1,
+            "api2": api2,
+            "api3": api3,
+            "rounds": rounds,
+            "chat_content": chat_content,
+            "start_time": start_time,
+            "end_time": end_time,
+        }
+
+        # 添加新记录到缓存
+        self._history_cache.append(history)
+        # 同步更新公开的chat_histories属性
+        self.chat_histories = self._history_cache
+        
+        # 标记新添加的记录为已修改
+        self._modified_indices.add(len(self._history_cache) - 1)
+        # 保存到文件
+        return self.save_history()
 
     def generate_formatted_topic(
         self, func_type: Literal["聊天", "讨论", "辩论", "批量"], topic: Optional[str] = None
@@ -410,113 +770,13 @@ class ChatHistoryManager:
         # 获取翻译后的功能类型
         translated_type = i18n.translate(func_type_map.get(func_type, "unknown"))
         
-        # 根据功能类型生成不同格式的主题
+        # 生成不同格式的主题
         if func_type == "聊天":
             return f"【{translated_type}】{current_time}"
         else:
             return f"【{translated_type}】{topic} {current_time}"
 
-    def add_history(
-        self,
-        func_type: Literal["聊天", "讨论", "辩论", "批量"],
-        topic: str,
-        model1_name: str,
-        model2_name: Optional[str],
-        api1: str,
-        api2: str,
-        rounds: int,
-        chat_content: str,
-        start_time: str,
-        end_time: str,
-    ) -> bool:
-        """
-        添加聊天历史记录
-        和同一个模型聊天，只记录一条历史，除非更换了模型
-        对于讨论、辩论、批量功能，每次都添加新记录
 
-        Args:
-            func_type (str): 功能类型，可选值："聊天"、"讨论"、"辩论"、"批量"
-            topic (str): 讨论主题
-            model1_name (str): 模型1名称
-            model2_name (Optional[str]): 模型2名称
-            api1 (str): 模型1 API类型
-            api2 (str): 模型2 API类型
-            rounds (int): 对话轮数
-            chat_content (str): 聊天内容
-            start_time (str): 开始时间
-            end_time (str): 结束时间
-
-        Returns:
-            bool: 添加成功返回True，失败返回False
-        """
-        # 确保缓存已加载
-        if not self._is_cache_loaded:
-            self._load_full_history()
-        
-        # 生成格式化的主题名称
-        formatted_topic = self.generate_formatted_topic(func_type, topic)
-
-        # 对于聊天功能，同一个模型只保存一条历史记录，更新现有记录
-        if func_type == "聊天":
-            # 检查是否存在相同模型组合的历史记录
-            for i, existing_history in enumerate(self._history_cache):
-                # 对于单聊模式，只比较model1和api1
-                if existing_history["model1"] == model1_name and existing_history["api1"] == api1:
-                    # 更新现有记录 - 优化：只更新必要的字段
-                    updated_history = existing_history.copy()
-                    updated_history.update({
-                        "topic": formatted_topic,
-                        "model2": model2_name,
-                        "api2": api2,
-                        "rounds": rounds,
-                        "chat_content": chat_content,
-                        "end_time": end_time,  # 更新结束时间
-                    })
-                    self._history_cache[i] = updated_history
-                    
-                    # 同步更新chat_histories属性
-                    self.chat_histories = self._history_cache
-                    
-                    # 标记为已修改
-                    self._modified_indices.add(i)
-                    return self.save_history()
-        
-        # 对于讨论、辩论、批量功能，每次都添加新记录
-        # 或者对于新的聊天模型，添加新记录
-        history = {
-            "topic": formatted_topic,
-            "model1": model1_name,
-            "model2": model2_name,
-            "api1": api1,
-            "api2": api2,
-            "rounds": rounds,
-            "chat_content": chat_content,
-            "start_time": start_time,
-            "end_time": end_time,
-        }
-
-        self._history_cache.append(history)
-        # 同步更新chat_histories属性
-        self.chat_histories = self._history_cache
-        
-        # 标记新添加的记录为已修改
-        self._modified_indices.add(len(self._history_cache) - 1)
-        return self.save_history()
-
-    def get_history_by_topic(self, topic: str) -> Optional[ChatHistoryItem]:
-        """
-        根据主题获取聊天历史
-
-        Args:
-            topic (str): 讨论主题
-
-        Returns:
-            Optional[Dict]: 匹配的聊天历史记录，不存在返回None
-        """
-        for history in self.chat_histories:
-            if history["topic"] == topic:
-                return history
-        return None
 
     def clear_history(self) -> bool:
         """
@@ -539,7 +799,7 @@ class ChatHistoryManager:
 
     def delete_history(self, index: int) -> bool:
         """
-        删除指定索引的聊天历史
+        删除指定索引的聊天历史，支持批量操作
 
         Args:
             index (int): 历史记录索引
@@ -547,10 +807,27 @@ class ChatHistoryManager:
         Returns:
             bool: 删除成功返回True，失败返回False
         """
+        # 批量操作处理
+        if self._batch_operation:
+            def batch_delete():
+                return self._delete_history_internal(index)
+            self._batch_queue.append(batch_delete)
+            return True
+        
+        # 非批量操作，直接执行
+        return self._delete_history_internal(index)
+        
+    def _delete_history_internal(self, index: int) -> bool:
+        """
+        内部删除历史记录的实现方法
+        """
         if not self._is_cache_loaded:
             self._load_full_history()
             
         if 0 <= index < len(self._history_cache):
+            # 获取要删除的历史记录，用于更新LRU缓存
+            deleted_history = self._history_cache[index]
+            
             # 如果删除的索引在修改列表中，先移除它
             if index in self._modified_indices:
                 self._modified_indices.remove(index)
@@ -570,8 +847,12 @@ class ChatHistoryManager:
             # 更新聊天历史列表
             self.chat_histories = self._history_cache.copy()
             
+            # 从LRU缓存中移除被删除的记录
+            if deleted_history["topic"] in self._history_lru_cache:
+                del self._history_lru_cache[deleted_history["topic"]]
+            
             # 强制保存，因为删除操作会影响所有后续记录的索引
-            return self.save_history()
+            return self.save_history(force=True)
         return False
 
     def export_history_to_json(self, export_path: str) -> bool:

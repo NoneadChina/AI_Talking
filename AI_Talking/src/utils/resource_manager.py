@@ -46,7 +46,9 @@ class ResourceManager:
                 # 三级父目录才是 AI_Talking 项目根目录
                 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                 possible_resource_dirs = [
-                    os.path.join(project_root, "resources")
+                    os.path.join(project_root, "resources"),
+                    # 也尝试 src/resources 目录，以防项目结构变化
+                    os.path.join(project_root, "src", "resources")
                 ]
 
             # 尝试所有可能的资源目录，返回第一个存在的资源文件路径

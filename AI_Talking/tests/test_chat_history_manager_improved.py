@@ -8,7 +8,10 @@ import tempfile
 import json
 import pytest
 from datetime import datetime
-from src.utils.chat_history_manager import ChatHistoryManager, ChatHistoryItem
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+from utils.chat_history_manager import ChatHistoryManager, ChatHistoryItem
 
 
 class TestChatHistoryManager:

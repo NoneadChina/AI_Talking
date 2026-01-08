@@ -7,15 +7,16 @@ AI Talking 主应用文件
 # 首先将当前文件所在目录添加到Python路径中，确保在导入任何模块之前执行
 import os
 import sys
+from pathlib import Path
 
 # 获取当前文件所在目录
-base_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir = Path(__file__).resolve().parent
 
 # 将base_dir添加到Python路径中，确保能找到utils模块
-sys.path.insert(0, base_dir)
+sys.path.insert(0, str(base_dir))
 
 # 也添加父目录，以防万一
-sys.path.insert(0, os.path.dirname(base_dir))
+sys.path.insert(0, str(base_dir.parent))
 
 
 
@@ -606,60 +607,114 @@ class AI_Talking_MainWindow(QMainWindow):
 
 def main():
     """
-    应用程序入口函数
+    应用程序入口函数，负责初始化和启动整个应用程序
     """
-    # 设置Qt属性，解决QtWebEngine初始化问题
-    from PyQt5.QtCore import QCoreApplication, Qt
+    # 设置Qt属性，解决QtWebEngine初始化问题，确保OpenGL上下文共享
+    from PyQt5.QtCore import QCoreApplication, Qt, QTimer
+    from PyQt5.QtWidgets import QMessageBox
     QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     
-    # 创建应用程序实例
+    # 创建应用程序实例，这是PyQt应用的核心
     app = QApplication(sys.argv)
 
-    # 延迟导入SplashScreen
+    # 延迟导入SplashScreen，避免启动时加载过多资源
     from ui.splash_screen import SplashScreen
     
     # 创建并显示启动画面
     splash = SplashScreen()
-    splash.center()
+    splash.center()  # 将启动画面居中显示
     splash.show()
 
-    # 立即刷新界面，确保启动画面显示
+    # 立即刷新界面，确保启动画面能够及时显示
     app.processEvents()
 
-    # 设置应用程序样式
+    # 设置应用程序样式为Fusion，提供现代化的外观
     app.setStyle("Fusion")
 
-    # 更新启动画面消息
+    # 更新启动画面消息，告知用户当前进度
     splash.update_progress("正在初始化应用...")
     app.processEvents()
 
-    # 初始化日志
+    # 记录应用程序启动日志
     logger.info("AI Talking 应用程序启动")
+    
+    # 检查Ollama API连接状态，这是应用的重要依赖
+    logger.info("正在检查Ollama API连接...")
+    splash.update_progress("正在检查Ollama API连接...")
+    app.processEvents()
+    
+    # 导入必要的requests模块用于API检查
+    import requests
+    
+    ollama_connected = True  # 默认假设连接成功
+    ollama_url = "http://localhost:11434"  # Ollama默认API地址
+    
+    try:
+        logger.info(f"正在测试Ollama API连接: {ollama_url}")
+        # 使用2秒超时时间，避免检查过程过长影响启动
+        response = requests.get(f"{ollama_url}/api/tags", timeout=2)
+        response.raise_for_status()  # 检查HTTP响应状态码
+        logger.info("Ollama API连接成功")
+    except requests.Timeout as e:
+        logger.error(f"Ollama API连接超时: {str(e)}")
+        ollama_connected = False
+    except requests.ConnectionError as e:
+        logger.error(f"Ollama API连接失败: {str(e)}")
+        ollama_connected = False
+    except requests.RequestException as e:
+        logger.error(f"Ollama API连接错误: {str(e)}")
+        ollama_connected = False
+    except Exception as e:
+        logger.error(f"检查Ollama API连接时发生意外错误: {str(e)}")
+        ollama_connected = False
+    
+    logger.info(f"Ollama连接检查完成，结果: {ollama_connected}")
+    
+    # 如果Ollama API连接失败，显示提示对话框告知用户
+    if not ollama_connected:
+        splash.update_progress("Ollama API连接失败，正在显示提示...")
+        app.processEvents()
+        
+        # 创建警告对话框，提示用户Ollama未运行
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Warning)
+        msg_box.setWindowTitle(i18n.translate("ollama_not_running_title"))
+        msg_box.setText(i18n.translate("ollama_not_running_message"))
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.setDefaultButton(QMessageBox.Ok)
+        msg_box.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Dialog)  # 确保对话框置顶显示
+        msg_box.setModal(True)  # 模态对话框，阻止用户操作其他窗口
+        
+        # 显示对话框并等待用户点击确认
+        msg_box.exec_()
+        
+        logger.info("用户确认了Ollama未运行的提示，继续启动应用")
 
-    # 创建主窗口（传递启动画面引用）
+    # 创建主窗口实例，传递启动画面引用以便后续控制
     window = AI_Talking_MainWindow(splash)
 
     # 显示主窗口
     window.show()
 
-    # 隐藏启动画面
+    # 主窗口显示完成后，隐藏启动画面
     splash.finish(window)
 
-    # 启动线程池
+    # 启动应用程序线程池，用于处理异步任务
     from utils.thread_pool import thread_pool
     thread_pool.start()
     
-    # 启动内存监控
+    # 启动内存监控，每30秒检查一次内存使用情况
     from utils.memory_monitor import memory_monitor
-    memory_monitor.start(interval=30)  # 每30秒监控一次
+    memory_monitor.start(interval=30)
     
-    # 运行应用程序
+    # 运行应用程序主循环，这是应用程序的核心事件循环
     try:
-        sys.exit(app.exec_())
+        sys.exit(app.exec_())  # 执行应用程序主循环，直到用户关闭窗口
     finally:
-        # 关闭应用程序前停止线程池和内存监控
-        thread_pool.stop(wait=False)
-        memory_monitor.stop()
+        # 应用程序关闭前的清理工作
+        logger.info("应用程序正在关闭，执行清理操作...")
+        thread_pool.stop(wait=False)  # 停止线程池，不等待所有任务完成
+        memory_monitor.stop()  # 停止内存监控
 
 
 if __name__ == "__main__":

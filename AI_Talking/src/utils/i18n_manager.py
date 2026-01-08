@@ -52,14 +52,14 @@ class I18nManager(QObject):
 
         # 翻译资源目录 - 处理PyInstaller打包后的路径差异
         import sys
+        from pathlib import Path
+        
         if hasattr(sys, '_MEIPASS'):
             # 打包后的环境，使用PyInstaller提供的临时目录
             self.translations_dir = os.path.join(sys._MEIPASS, "src", "i8n")
         else:
-            # 开发环境，使用相对路径计算
-            self.translations_dir = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "i8n"
-            )
+            # 开发环境，使用Path对象计算绝对路径
+            self.translations_dir = str(Path(__file__).resolve().parent.parent / "i8n")
 
         # 翻译资源字典，存储所有语言的翻译数据
         # 结构: {语言代码: {翻译键: 翻译值}}
@@ -67,6 +67,17 @@ class I18nManager(QObject):
 
         # 加载所有语言的翻译文件
         self._load_translations()
+        
+        # 验证所有翻译键的完整性
+        invalid_keys = self.validate_all_translation_keys()
+        if invalid_keys:
+            logging.warning(
+                f"Found {len(invalid_keys)} invalid translation keys: {', '.join(invalid_keys)}"
+            )
+            # 自动补全缺失的翻译键
+            completed = self.complete_translations(save=True)
+            if completed:
+                logging.info(f"Automatically completed translations: {completed}")
 
         # 当前语言，默认使用系统语言
         self.current_language = self.get_system_language()
@@ -79,29 +90,8 @@ class I18nManager(QObject):
         处理可能出现的异常情况，确保程序稳定性。
         """
         for lang_code in self.supported_languages:
-            try:
-                # 构建翻译文件路径
-                file_path = os.path.join(self.translations_dir, f"{lang_code}.json")
-                # 读取并解析JSON翻译文件
-                with open(file_path, "r", encoding="utf-8") as f:
-                    self.translations[lang_code] = json.load(f)
-                logging.info(f"Loaded translations for language: {lang_code}")
-            except FileNotFoundError:
-                # 翻译文件不存在时的处理
-                logging.error(f"Translation file not found for language: {lang_code}")
-                self.translations[lang_code] = {}  # 使用空字典作为默认值
-            except json.JSONDecodeError as e:
-                # JSON解析错误时的处理
-                logging.error(
-                    f"Error parsing translation file for language {lang_code}: {e}"
-                )
-                self.translations[lang_code] = {}  # 使用空字典作为默认值
-            except Exception as e:
-                # 其他意外错误时的处理
-                logging.error(
-                    f"Unexpected error loading translations for language {lang_code}: {e}"
-                )
-                self.translations[lang_code] = {}  # 使用空字典作为默认值
+            # 使用新的load_translation方法加载翻译
+            self.load_translation(lang_code)
 
     def get_system_language(self) -> str:
         """
@@ -240,6 +230,187 @@ class I18nManager(QObject):
             str: 语言显示名称，如 "简体中文"、"English" 等
         """
         return self.supported_languages.get(language_code, language_code)
+    
+    def check_translations(self) -> Dict[str, Dict[str, list]]:
+        """
+        检查所有翻译文件的完整性和一致性
+        
+        比较所有翻译文件与参考语言（英语）的翻译键，
+        找出每个语言文件中缺失的翻译键。
+
+        Returns:
+            Dict[str, Dict[str, list]]: 包含每个语言文件缺失键和多余键的字典
+        """
+        # 使用英语作为参考语言
+        reference_lang = "en"
+        if reference_lang not in self.translations:
+            logging.error(f"Reference language '{reference_lang}' not found in translations")
+            return {}
+        
+        reference_keys = set(self.translations[reference_lang].keys())
+        results = {}
+        
+        for lang_code, translations in self.translations.items():
+            lang_keys = set(translations.keys())
+            
+            # 缺失的翻译键
+            missing_keys = reference_keys - lang_keys
+            # 多余的翻译键
+            extra_keys = lang_keys - reference_keys
+            
+            if missing_keys or extra_keys:
+                results[lang_code] = {
+                    "missing": sorted(list(missing_keys)),
+                    "extra": sorted(list(extra_keys))
+                }
+        
+        return results
+    
+    def complete_translations(self, save: bool = False) -> Dict[str, int]:
+        """
+        自动补全所有翻译文件中缺失的翻译键
+        
+        使用参考语言（英语）的翻译作为默认值，
+        补全其他语言文件中缺失的翻译键。
+
+        Args:
+            save (bool): 是否将补全后的翻译保存到文件
+
+        Returns:
+            Dict[str, int]: 包含每种语言补全的翻译键数量的字典
+        """
+        # 使用英语作为参考语言
+        reference_lang = "en"
+        if reference_lang not in self.translations:
+            logging.error(f"Reference language '{reference_lang}' not found in translations")
+            return {}
+        
+        reference_translations = self.translations[reference_lang]
+        completed_count = {}
+        
+        for lang_code, translations in self.translations.items():
+            if lang_code == reference_lang:
+                continue  # 跳过参考语言
+            
+            missing_keys = set(reference_translations.keys()) - set(translations.keys())
+            if missing_keys:
+                completed_count[lang_code] = 0
+                for key in missing_keys:
+                    # 使用参考语言的翻译作为默认值
+                    self.translations[lang_code][key] = reference_translations[key]
+                    completed_count[lang_code] += 1
+                
+                logging.info(f"Completed {completed_count[lang_code]} missing translations for language: {lang_code}")
+        
+        # 如果需要保存到文件
+        if save:
+            self._save_translations()
+        
+        return completed_count
+    
+    def _save_translations(self):
+        """
+        将当前加载的翻译保存到对应的JSON文件
+        """
+        for lang_code, translations in self.translations.items():
+            try:
+                file_path = os.path.join(self.translations_dir, f"{lang_code}.json")
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(translations, f, ensure_ascii=False, indent=2)
+                logging.info(f"Saved translations to file: {file_path}")
+            except Exception as e:
+                logging.error(f"Error saving translations for language {lang_code}: {e}")
+    
+    def validate_translation_key(self, key: str) -> bool:
+        """
+        验证翻译键是否存在于所有支持的语言文件中
+        
+        Args:
+            key (str): 要验证的翻译键
+
+        Returns:
+            bool: 如果翻译键存在于所有支持的语言文件中则返回True，否则返回False
+        """
+        for lang_code in self.supported_languages:
+            if lang_code in self.translations:
+                if key not in self.translations[lang_code]:
+                    logging.warning(f"Translation key '{key}' not found in language '{lang_code}'")
+                    return False
+        return True
+    
+    def validate_all_translation_keys(self) -> list:
+        """
+        验证所有翻译键是否存在于所有翻译文件中
+        
+        Returns:
+            list: 包含所有缺失翻译键的列表
+        """
+        # 使用英语作为参考语言
+        reference_lang = "en"
+        if reference_lang not in self.translations:
+            logging.error(f"Reference language '{reference_lang}' not found in translations")
+            return []
+        
+        reference_keys = self.translations[reference_lang].keys()
+        invalid_keys = []
+        
+        for key in reference_keys:
+            if not self.validate_translation_key(key):
+                invalid_keys.append(key)
+        
+        return invalid_keys
+    
+    def load_translation(self, lang_code: str, incremental: bool = False) -> bool:
+        """
+        加载指定语言的翻译文件
+        
+        Args:
+            lang_code (str): 语言代码
+            incremental (bool): 是否增量加载（只加载新增的翻译键）
+
+        Returns:
+            bool: 加载成功返回True，否则返回False
+        """
+        try:
+            file_path = os.path.join(self.translations_dir, f"{lang_code}.json")
+            with open(file_path, "r", encoding="utf-8") as f:
+                new_translations = json.load(f)
+            
+            if incremental and lang_code in self.translations:
+                # 增量加载，只添加新的翻译键
+                existing_translations = self.translations[lang_code]
+                new_keys = set(new_translations.keys()) - set(existing_translations.keys())
+                if new_keys:
+                    for key in new_keys:
+                        existing_translations[key] = new_translations[key]
+                    logging.info(f"Incrementally loaded {len(new_keys)} new translations for language: {lang_code}")
+            else:
+                # 完整加载
+                self.translations[lang_code] = new_translations
+                logging.info(f"Loaded translations for language: {lang_code}")
+            
+            return True
+        except FileNotFoundError:
+            logging.error(f"Translation file not found for language: {lang_code}")
+            self.translations[lang_code] = {}
+        except json.JSONDecodeError as e:
+            logging.error(f"Error parsing translation file for language {lang_code}: {e}")
+            self.translations[lang_code] = {}
+        except Exception as e:
+            logging.error(f"Unexpected error loading translations for language {lang_code}: {e}")
+            self.translations[lang_code] = {}
+        
+        return False
+    
+    def reload_translations(self, incremental: bool = False) -> None:
+        """
+        重新加载所有翻译文件
+        
+        Args:
+            incremental (bool): 是否增量加载
+        """
+        for lang_code in self.supported_languages:
+            self.load_translation(lang_code, incremental)
 
 
 # 创建国际化管理器实例，供全局使用

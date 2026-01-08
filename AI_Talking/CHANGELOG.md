@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-01-08
+
+### Added
+- 实现了虚拟列表组件，优化长列表的渲染性能
+- 统一了UI组件的样式和行为
+- 优化了UI组件的初始化顺序，提高启动速度
+- 增加了全面的测试用例，包括单元测试和集成测试
+- 为核心代码添加了详细的简体中文注释
+
+### Fixed
+- 修复了Ollama聊天API请求格式错误导致的500错误
+- 修复了虚拟列表调整大小事件的测试失败问题
+- 修复了模块导入错误，添加了sys.path调整
+
+### Improved
+- 优化了虚拟列表性能，使用字典存储和渲染缓存
+- 提高了代码可维护性和可读性
+- 实现了高效的测试覆盖率
+
+## [1.1.0] - 2026-01-07
+
+### Changed
+- 更新软件版本号从1.0.8到1.1.0
+
+### Fixed
+- 修复了历史功能中删除历史记录未真正保存的问题
+- 修复了聊天功能中加载历史时的气泡嵌套问题
+- 修复了历史功能中清空所有按钮缺少翻译键的问题
+- 修复了Ollama API连接错误消息显示问题
+- 修复了历史功能中导出全部功能的文件名格式问题
+
+### Improved
+- 优化了聊天历史记录管理，确保聊天记录正确保存和更新
+- 改进了聊天历史导入功能，解决了气泡嵌套问题
+- 优化了历史功能中导出选中功能，确保导出格式符合加载要求
+
 ## [1.0.0] - 2026-01-05
 
 ### Changed

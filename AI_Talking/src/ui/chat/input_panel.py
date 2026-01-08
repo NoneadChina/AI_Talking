@@ -106,7 +106,8 @@ class ChatInputWidget(QWidget):
         
         # 1. 文件上传按钮（使用自定义PNG图标）
         self.upload_button = QPushButton()
-        self.upload_button.setIcon(ResourceManager.load_icon("upload_file.png"))  # 使用自定义上传PNG图标
+        upload_icon = self._load_upload_icon()  # Load icon with cross-platform support
+        self.upload_button.setIcon(upload_icon)
         self.upload_button.setToolTip(i18n.translate("upload_file_tooltip"))
         self.upload_button.setStyleSheet(
             """
@@ -155,7 +156,8 @@ class ChatInputWidget(QWidget):
 
         # 2. 智能搜索按钮（使用自定义PNG图标）
         self.search_button = QPushButton()
-        self.search_button.setIcon(ResourceManager.load_icon("Internet_Search.png"))  # 使用自定义搜索PNG图标
+        search_icon = self._load_search_icon()  # Load icon with cross-platform support
+        self.search_button.setIcon(search_icon)
         self.search_button.setToolTip(i18n.translate("smart_search_tooltip"))
         self.search_button.setStyleSheet(
             """
@@ -213,7 +215,8 @@ class ChatInputWidget(QWidget):
 
         # 3. 语音输入按钮（使用自定义PNG图标）
         self.voice_button = QPushButton()
-        self.voice_button.setIcon(ResourceManager.load_icon("voice.png"))  # 使用自定义语音PNG图标
+        voice_icon = self._load_voice_icon()  # Load icon with cross-platform support
+        self.voice_button.setIcon(voice_icon)
         self.voice_button.setCheckable(True)  # 可切换状态
         self.voice_button.setToolTip(i18n.translate("voice_input_tooltip"))
         self.voice_button.setStyleSheet(
@@ -549,3 +552,234 @@ class ChatInputWidget(QWidget):
             if len(actions) >= 2:
                 actions[0].setText(i18n.translate("search_mode_off"))
                 actions[1].setText(i18n.translate("search_mode_auto"))
+
+    def _load_search_icon(self):
+        """
+        Load search icon with cross-platform support and graceful fallbacks
+        Implements best practices for cross-platform icon loading
+        """
+        from PyQt5.QtWidgets import QStyle
+        from PyQt5.QtGui import QIcon, QPixmap
+        from PyQt5.QtCore import Qt
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Try to load custom Internet_Search.png icon
+        try:
+            search_icon = ResourceManager.load_icon("Internet_Search.png")
+            if search_icon and not search_icon.isNull():
+                logger.debug("Successfully loaded custom Internet_Search.png icon")
+                return search_icon
+        except Exception as e:
+            logger.warning(f"Failed to load custom Internet_Search.png: {e}")
+
+        # Try to load with different common names for cross-platform compatibility
+        common_icon_names = [
+            "search.png",
+            "search_icon.png",
+            "internet_search.png",
+            "web_search.png"
+        ]
+
+        for icon_name in common_icon_names:
+            try:
+                alt_icon = ResourceManager.load_icon(icon_name)
+                if alt_icon and not alt_icon.isNull():
+                    logger.debug(f"Successfully loaded alternative icon: {icon_name}")
+                    return alt_icon
+            except:
+                continue
+
+        # Fallback to standard Qt icon based on platform
+        app_style = QApplication.instance().style() if QApplication.instance() else None
+        if app_style:
+            try:
+                # Use SP_FileDialogContentsView as primary fallback
+                fallback_icon = app_style.standardIcon(QStyle.SP_FileDialogContentsView)
+                if not fallback_icon.isNull():
+                    logger.debug("Using standard Qt FileDialogContentsView icon as fallback")
+                    return fallback_icon
+            except:
+                pass
+
+            try:
+                # Secondary fallback options
+                secondary_fallbacks = [
+                    QStyle.SP_BrowserReload,      # Browser refresh/reload icon
+                    QStyle.SP_FileDialogInfoView, # File dialog info view
+                    QStyle.SP_CommandLink,        # Command link icon
+                    QStyle.SP_DesktopIcon         # Desktop icon
+                ]
+
+                for fallback in secondary_fallbacks:
+                    fallback_icon = app_style.standardIcon(fallback)
+                    if not fallback_icon.isNull():
+                        logger.debug(f"Using standard Qt {fallback} icon as fallback")
+                        return fallback_icon
+            except:
+                pass
+
+        # Ultimate fallback - create a simple placeholder icon
+        logger.warning("All icon loading attempts failed, creating placeholder icon")
+        try:
+            pixmap = QPixmap(24, 24)  # Standard icon size
+            pixmap.fill(Qt.transparent)  # Transparent background
+            return QIcon(pixmap)
+        except:
+            # If even creating a pixmap fails, return an empty icon
+            return QIcon()
+
+    def _load_upload_icon(self):
+        """
+        Load upload icon with cross-platform support and graceful fallbacks
+        Implements best practices for cross-platform icon loading
+        """
+        from PyQt5.QtWidgets import QStyle
+        from PyQt5.QtGui import QIcon, QPixmap
+        from PyQt5.QtCore import Qt
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Try to load custom upload_file.png icon
+        try:
+            upload_icon = ResourceManager.load_icon("upload_file.png")
+            if upload_icon and not upload_icon.isNull():
+                logger.debug("Successfully loaded custom upload_file.png icon")
+                return upload_icon
+        except Exception as e:
+            logger.warning(f"Failed to load custom upload_file.png: {e}")
+
+        # Try to load with different common names for cross-platform compatibility
+        common_icon_names = [
+            "upload.png",
+            "upload_icon.png",
+            "file_upload.png",
+            "attach.png"
+        ]
+
+        for icon_name in common_icon_names:
+            try:
+                alt_icon = ResourceManager.load_icon(icon_name)
+                if alt_icon and not alt_icon.isNull():
+                    logger.debug(f"Successfully loaded alternative icon: {icon_name}")
+                    return alt_icon
+            except:
+                continue
+
+        # Fallback to standard Qt icon based on platform
+        app_style = QApplication.instance().style() if QApplication.instance() else None
+        if app_style:
+            try:
+                # Use SP_DirIcon as primary fallback for upload
+                fallback_icon = app_style.standardIcon(QStyle.SP_DirIcon)
+                if not fallback_icon.isNull():
+                    logger.debug("Using standard Qt DirIcon as fallback")
+                    return fallback_icon
+            except:
+                pass
+
+            try:
+                # Secondary fallback options
+                secondary_fallbacks = [
+                    QStyle.SP_DialogOpenButton,     # Open dialog icon
+                    QStyle.SP_FileDialogDetailedView, # File dialog detailed view
+                    QStyle.SP_ArrowUp,              # Up arrow icon
+                    QStyle.SP_DesktopIcon           # Desktop icon
+                ]
+
+                for fallback in secondary_fallbacks:
+                    fallback_icon = app_style.standardIcon(fallback)
+                    if not fallback_icon.isNull():
+                        logger.debug(f"Using standard Qt {fallback} icon as fallback")
+                        return fallback_icon
+            except:
+                pass
+
+        # Ultimate fallback - create a simple placeholder icon
+        logger.warning("All upload icon loading attempts failed, creating placeholder icon")
+        try:
+            pixmap = QPixmap(24, 24)  # Standard icon size
+            pixmap.fill(Qt.transparent)  # Transparent background
+            return QIcon(pixmap)
+        except:
+            # If even creating a pixmap fails, return an empty icon
+            return QIcon()
+
+    def _load_voice_icon(self):
+        """
+        Load voice icon with cross-platform support and graceful fallbacks
+        Implements best practices for cross-platform icon loading
+        """
+        from PyQt5.QtWidgets import QStyle
+        from PyQt5.QtGui import QIcon, QPixmap
+        from PyQt5.QtCore import Qt
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Try to load custom voice.png icon
+        try:
+            voice_icon = ResourceManager.load_icon("voice.png")
+            if voice_icon and not voice_icon.isNull():
+                logger.debug("Successfully loaded custom voice.png icon")
+                return voice_icon
+        except Exception as e:
+            logger.warning(f"Failed to load custom voice.png: {e}")
+
+        # Try to load with different common names for cross-platform compatibility
+        common_icon_names = [
+            "microphone.png",
+            "mic.png",
+            "voice_input.png",
+            "audio.png"
+        ]
+
+        for icon_name in common_icon_names:
+            try:
+                alt_icon = ResourceManager.load_icon(icon_name)
+                if alt_icon and not alt_icon.isNull():
+                    logger.debug(f"Successfully loaded alternative icon: {icon_name}")
+                    return alt_icon
+            except:
+                continue
+
+        # Fallback to standard Qt icon based on platform
+        app_style = QApplication.instance().style() if QApplication.instance() else None
+        if app_style:
+            try:
+                # Use SP_MediaVolume as primary fallback for voice/microphone
+                fallback_icon = app_style.standardIcon(QStyle.SP_MediaVolume)
+                if not fallback_icon.isNull():
+                    logger.debug("Using standard Qt MediaVolume icon as fallback")
+                    return fallback_icon
+            except:
+                pass
+
+            try:
+                # Secondary fallback options
+                secondary_fallbacks = [
+                    QStyle.SP_TitleBarMaxButton,    # Maximize button (as microphone shape)
+                    QStyle.SP_ComputerIcon,         # Computer icon
+                    QStyle.SP_Volume,               # Volume icon
+                    QStyle.SP_DesktopIcon           # Desktop icon
+                ]
+
+                for fallback in secondary_fallbacks:
+                    fallback_icon = app_style.standardIcon(fallback)
+                    if not fallback_icon.isNull():
+                        logger.debug(f"Using standard Qt {fallback} icon as fallback")
+                        return fallback_icon
+            except:
+                pass
+
+        # Ultimate fallback - create a simple placeholder icon
+        logger.warning("All voice icon loading attempts failed, creating placeholder icon")
+        try:
+            pixmap = QPixmap(24, 24)  # Standard icon size
+            pixmap.fill(Qt.transparent)  # Transparent background
+            return QIcon(pixmap)
+        except:
+            # If even creating a pixmap fails, return an empty icon
+            return QIcon()

@@ -141,12 +141,15 @@ class APISettingsWidget(QWidget):
                 margin-top: 5px;
                 padding: 10px;
             }
-        """
-        )
-        language_layout = QHBoxLayout()
+        """)
+        language_layout = QVBoxLayout()
         language_layout.setSpacing(10)
+        
+        # 语言选择行
+        language_row_layout = QHBoxLayout()
+        language_row_layout.setSpacing(10)
         self.language_label = QLabel(i18n.translate("setting_select_language"))
-        language_layout.addWidget(self.language_label, alignment=Qt.AlignVCenter)
+        language_row_layout.addWidget(self.language_label, alignment=Qt.AlignVCenter)
         self.language_combo = QComboBox()
         # 获取支持的语言列表
         supported_languages = i18n.get_supported_languages()
@@ -162,12 +165,27 @@ class APISettingsWidget(QWidget):
                 font-size: 10pt;
                 min-width: 180px;
             }
-        """
-        )
+        """)
         # 连接语言切换信号
         self.language_combo.currentIndexChanged.connect(self.on_language_changed)
-        language_layout.addWidget(self.language_combo)
-        language_layout.addStretch()
+        language_row_layout.addWidget(self.language_combo)
+        language_row_layout.addStretch()
+        
+        # 警告信息
+        self.language_warning = QLabel(i18n.translate("setting_language_warning"))
+        self.language_warning.setStyleSheet(
+            """
+            QLabel {
+                color: #ff6b6b;
+                font-size: 9pt;
+                font-weight: bold;
+                margin-top: -5px;
+            }
+        """)
+        
+        language_layout.addLayout(language_row_layout)
+        language_layout.addWidget(self.language_warning)
+        
         self.language_group.setLayout(language_layout)
         model_settings_layout.addWidget(self.language_group)
 
@@ -185,14 +203,14 @@ class APISettingsWidget(QWidget):
             }
         """
         )
-        translation_layout = QVBoxLayout()
-        translation_layout.setSpacing(10)
+        translation_layout = QHBoxLayout()
+        translation_layout.setSpacing(20)
 
         # 服务提供商
-        provider_layout = QHBoxLayout()
-        provider_layout.setSpacing(10)
+        provider_container = QVBoxLayout()
+        provider_container.setSpacing(5)
         self.provider_label = QLabel(i18n.translate("setting_provider"))
-        provider_layout.addWidget(self.provider_label, alignment=Qt.AlignVCenter)
+        provider_container.addWidget(self.provider_label, alignment=Qt.AlignVCenter)
         self.translation_provider_combo = QComboBox()
         self.translation_provider_combo.addItems(["OpenAI", "DeepSeek", "Ollama", "Ollama Cloud"])
         self.translation_provider_combo.setStyleSheet(
@@ -207,15 +225,14 @@ class APISettingsWidget(QWidget):
         """)
         # 连接服务提供商变化信号，用于更新模型列表
         self.translation_provider_combo.currentIndexChanged.connect(self.on_translation_provider_changed)
-        provider_layout.addWidget(self.translation_provider_combo)
-        provider_layout.addStretch()
-        translation_layout.addLayout(provider_layout)
+        provider_container.addWidget(self.translation_provider_combo)
+        translation_layout.addLayout(provider_container)
 
         # 翻译默认模型
-        model_layout = QHBoxLayout()
-        model_layout.setSpacing(10)
+        model_container = QVBoxLayout()
+        model_container.setSpacing(5)
         self.default_model_label = QLabel(i18n.translate("setting_default_model"))
-        model_layout.addWidget(self.default_model_label, alignment=Qt.AlignVCenter)
+        model_container.addWidget(self.default_model_label, alignment=Qt.AlignVCenter)
         self.translation_model_combo = QComboBox()
         self.translation_model_combo.setStyleSheet(
             """
@@ -227,9 +244,9 @@ class APISettingsWidget(QWidget):
                 min-width: 180px;
             }
         """)
-        model_layout.addWidget(self.translation_model_combo)
-        model_layout.addStretch()
-        translation_layout.addLayout(model_layout)
+        model_container.addWidget(self.translation_model_combo)
+        translation_layout.addLayout(model_container)
+        translation_layout.addStretch()
 
         self.translation_group.setLayout(translation_layout)
         model_settings_layout.addWidget(self.translation_group)
@@ -789,6 +806,8 @@ class APISettingsWidget(QWidget):
             self.language_group.setTitle(i18n.translate("setting_language"))
         if hasattr(self, "language_label"):
             self.language_label.setText(i18n.translate("setting_select_language"))
+        if hasattr(self, "language_warning"):
+            self.language_warning.setText(i18n.translate("setting_language_warning"))
 
         # 翻译模型设置组
         if hasattr(self, "translation_group"):

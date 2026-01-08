@@ -77,6 +77,7 @@ class ChatTabWidget(QWidget):
         # 聊天状态管理
         self.is_ai_responding = False  # 标记AI是否正在回复
         self.pending_messages = []  # 存储待发送的消息队列
+        self.just_cleared_history = False  # 标记是否刚刚清空了历史
 
         # 初始化UI
         self.init_ui()
@@ -713,26 +714,109 @@ class ChatTabWidget(QWidget):
         从文件加载标准聊天功能的聊天历史
         """
         import json
+        import traceback
 
         try:
+            logger.info("开始执行load_standard_chat_history方法")
+            
             # 打开文件对话框，让用户选择加载文件
+            load_chat_history_text = i18n.translate("load_chat_history")
             file_path, _ = QFileDialog.getOpenFileName(
-                self, i18n.translate("load_chat_history"), "", "JSON Files (*.json)"
+                self, load_chat_history_text, "", "JSON Files (*.json)"
             )
 
             if not file_path:
+                logger.info("用户取消了文件选择")
                 return
 
+            logger.info(f"开始加载聊天历史文件: {file_path}")
+            
             # 从JSON文件加载聊天历史
             with open(file_path, "r", encoding="utf-8") as f:
                 chat_history = json.load(f)
 
+            logger.info(f"成功加载文件，内容类型: {type(chat_history)}")
+            
+            # 处理两种情况：1. 直接是聊天历史对象；2. 是历史记录列表（从历史管理导出的）
+            actual_chat_history = chat_history
+            
+            # 如果是列表，取第一个元素
+            if isinstance(chat_history, list):
+                logger.info(f"加载的是列表，长度: {len(chat_history)}")
+                if len(chat_history) > 0:
+                    actual_chat_history = chat_history[0]
+                    logger.info(f"取列表第一个元素，类型: {type(actual_chat_history)}")
+                else:
+                    logger.info("列表为空，使用空消息列表")
+                    self.standard_chat_history_messages = []
+                    return
+            
             # 直接重置聊天消息历史
-            if "messages" in chat_history and isinstance(
-                chat_history["messages"], list
-            ):
-                self.standard_chat_history_messages = chat_history["messages"]
+            if isinstance(actual_chat_history, dict):
+                logger.info(f"加载的是字典，包含键: {list(actual_chat_history.keys())}")
+                if "messages" in actual_chat_history and isinstance(
+                    actual_chat_history["messages"], list
+                ):
+                    messages = actual_chat_history["messages"]
+                    
+                    # 检测是否是导出选中导出的格式（messages只有一条，且内容包含HTML标签）
+                    if len(messages) == 1 and isinstance(messages[0], dict):
+                        content = messages[0].get("content", "")
+                        role = messages[0].get("role", "")
+                        
+                        # 检查内容是否包含HTML标签（导出选中格式的特征）
+                        if content and ("<div" in content or "<p" in content or "<span" in content or "<table" in content or "<br" in content):
+                            logger.info("检测到导出选中格式的聊天历史，直接设置HTML内容")
+                            # 直接使用HTML内容，不进行消息渲染
+                            all_messages_html = content
+                            
+                            # 构建JavaScript代码设置HTML
+                            escaped_html = json.dumps(all_messages_html)
+                            js = (
+                                "document.getElementById('chat-body').innerHTML = "
+                                + escaped_html
+                                + ";\n"
+                            )
+                            js += "window.scrollTo(0, document.body.scrollHeight);\n"
+                            js += "// 重新渲染MathJax公式\n"
+                            js += "if (window.MathJax) {\n"
+                            js += "    MathJax.typesetPromise();\n"
+                            js += "}\n"
+                            
+                            # 执行JavaScript
+                            if hasattr(self, 'chat_list_widget') and self.chat_list_widget is not None:
+                                if hasattr(self.chat_list_widget, 'chat_history_view') and self.chat_list_widget.chat_history_view is not None:
+                                    if hasattr(self.chat_list_widget.chat_history_view, 'page') and self.chat_list_widget.chat_history_view.page() is not None:
+                                        self.chat_list_widget.chat_history_view.page().runJavaScript(js)
+                                        logger.info("成功执行JavaScript代码（导出选中格式）")
+                                    
+                                    # 设置空消息列表，避免后续处理
+                                    self.standard_chat_history_messages = []
+                                    
+                                    # 跳过常规消息渲染流程
+                                    self._finish_load_chat_history(actual_chat_history, file_path)
+                                    return
+                    
+                    # 常规messages格式
+                    self.standard_chat_history_messages = messages
+                    logger.info(f"成功加载messages字段，数量: {len(self.standard_chat_history_messages)}")
+                else:
+                    # 尝试从历史记录中提取聊天内容
+                    chat_content = actual_chat_history.get("chat_content", "")
+                    if chat_content:
+                        logger.info("从chat_content字段提取聊天内容")
+                        # 创建一个简单的消息结构
+                        self.standard_chat_history_messages = [
+                            {
+                                "role": "assistant",
+                                "content": chat_content
+                            }
+                        ]
+                    else:
+                        logger.info("没有找到聊天内容，使用空消息列表")
+                        self.standard_chat_history_messages = []
             else:
+                logger.warning(f"未知的聊天历史格式: {type(actual_chat_history)}")
                 self.standard_chat_history_messages = []
 
             # 构建完整的消息HTML内容
@@ -740,7 +824,6 @@ class ChatTabWidget(QWidget):
             for msg in self.standard_chat_history_messages:
                 try:
                     if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                        from utils.i18n_manager import i18n
                         user_text = i18n.translate('user')
                         system_text = i18n.translate('system')
                         sender = (
@@ -748,7 +831,7 @@ class ChatTabWidget(QWidget):
                             if msg["role"] == "user"
                             else "AI" if msg["role"] == "assistant" else system_text
                         )
-                        model = chat_history.get("model", "")
+                        model = actual_chat_history.get("model", "")
                         # 渲染单条消息HTML
                         message_html = ChatMessageWidget.render_message(
                             sender, msg["content"], model
@@ -756,11 +839,12 @@ class ChatTabWidget(QWidget):
                         all_messages_html += message_html
                 except Exception as e:
                     logger.error(f"加载消息失败: {str(e)}")
+                    continue
 
+            logger.info(f"成功构建消息HTML，长度: {len(all_messages_html)}")
+            
             # 使用JavaScript一次性设置所有聊天内容，避免异步冲突
             # 将HTML内容转换为JSON字符串，避免转义问题
-            import json
-
             escaped_html = json.dumps(all_messages_html)
 
             js = (
@@ -774,12 +858,25 @@ class ChatTabWidget(QWidget):
             js += "    MathJax.typesetPromise();\n"
             js += "}\n"
 
-            # 只传递JavaScript代码，不传递第二个参数
-            self.chat_list_widget.chat_history_view.page().runJavaScript(js)
+            logger.info("准备执行JavaScript代码")
+            
+            # 检查聊天列表控件是否存在
+            if hasattr(self, 'chat_list_widget') and self.chat_list_widget is not None:
+                if hasattr(self.chat_list_widget, 'chat_history_view') and self.chat_list_widget.chat_history_view is not None:
+                    if hasattr(self.chat_list_widget.chat_history_view, 'page') and self.chat_list_widget.chat_history_view.page() is not None:
+                        # 只传递JavaScript代码，不传递第二个参数
+                        self.chat_list_widget.chat_history_view.page().runJavaScript(js)
+                        logger.info("成功执行JavaScript代码")
+                    else:
+                        logger.error("chat_history_view.page() 不存在")
+                else:
+                    logger.error("chat_list_widget.chat_history_view 不存在")
+            else:
+                logger.error("self.chat_list_widget 不存在")
 
             # 辅助函数：设置组合框值并防止信号触发
             def set_combobox_value(combobox, value):
-                if value:
+                if combobox and value:
                     combobox.blockSignals(True)
                     if isinstance(value, str):
                         combobox.setCurrentText(value)
@@ -788,45 +885,115 @@ class ChatTabWidget(QWidget):
                     combobox.blockSignals(False)
 
             # 最后更新API和模型设置，使用直接设置，不触发任何信号
-            if "api" in chat_history:
+            if "api" in actual_chat_history:
                 # 直接设置API，不触发信号
-                index = self.chat_api_combo.findText(chat_history["api"])
-                if index != -1:
-                    set_combobox_value(self.chat_api_combo, index)
+                if hasattr(self, 'chat_api_combo') and self.chat_api_combo is not None:
+                    index = self.chat_api_combo.findText(actual_chat_history["api"])
+                    if index != -1:
+                        set_combobox_value(self.chat_api_combo, index)
+                        logger.info(f"成功设置API: {actual_chat_history['api']}")
+                else:
+                    logger.error("self.chat_api_combo 不存在")
 
-            if "model" in chat_history:
+            if "model" in actual_chat_history:
                 # 直接设置模型，不触发信号
-                set_combobox_value(self.chat_model_combo, chat_history["model"])
+                if hasattr(self, 'chat_model_combo') and self.chat_model_combo is not None:
+                    set_combobox_value(self.chat_model_combo, actual_chat_history["model"])
+                    logger.info(f"成功设置模型: {actual_chat_history['model']}")
+                else:
+                    logger.error("self.chat_model_combo 不存在")
 
-            if "temperature" in chat_history:
-                self.chat_temperature_spin.setValue(chat_history["temperature"])
+            if "temperature" in actual_chat_history:
+                if hasattr(self, 'chat_temperature_spin') and self.chat_temperature_spin is not None:
+                    self.chat_temperature_spin.setValue(actual_chat_history["temperature"])
+                    logger.info(f"成功设置温度: {actual_chat_history['temperature']}")
+                else:
+                    logger.error("self.chat_temperature_spin 不存在")
 
+            # 显示成功消息
+            success_text = i18n.translate("success")
+            chat_history_loaded_text = i18n.translate("chat_history_loaded")
+            chat_history_loaded_text = chat_history_loaded_text.format(path=file_path)
             QMessageBox.information(
                 self,
-                i18n.translate("success"),
-                i18n.translate("chat_history_loaded", path=file_path),
+                success_text,
+                chat_history_loaded_text,
             )
+            logger.info("聊天历史加载完成")
+            
         except json.JSONDecodeError as e:
             logger.error(f"JSON解析失败: {str(e)}")
+            error_text = i18n.translate("error")
+            json_parse_failed_text = i18n.translate("json_parse_failed")
             QMessageBox.critical(
                 self,
-                i18n.translate("error"),
-                i18n.translate("json_parse_failed", error=str(e)),
+                error_text,
+                json_parse_failed_text.format(error=str(e)),
             )
         except FileNotFoundError:
             logger.error(f"文件未找到: {file_path}")
+            error_text = i18n.translate("error")
             QMessageBox.critical(
                 self,
-                i18n.translate("error"),
-                i18n.translate("file_not_found", path=file_path),
+                error_text,
+                f"文件未找到: {file_path}",
             )
         except Exception as e:
-            logger.error(f"加载聊天历史失败: {str(e)}")
+            logger.error(f"加载聊天历史时发生未知错误: {str(e)}")
+            logger.error(f"错误堆栈: {traceback.format_exc()}")
+            error_text = i18n.translate("error")
             QMessageBox.critical(
                 self,
-                i18n.translate("error"),
-                i18n.translate("chat_history_load_failed", error=str(e)),
+                error_text,
+                f"加载聊天历史失败: {str(e)}",
             )
+
+    def _finish_load_chat_history(self, actual_chat_history: dict, file_path: str):
+        """
+        完成聊天历史加载后的处理工作（设置API、模型、温度等）
+
+        Args:
+            actual_chat_history: 加载的聊天历史数据
+            file_path: 加载的文件路径
+        """
+        # 辅助函数：设置组合框值并防止信号触发
+        def set_combobox_value(combobox, value):
+            if combobox and value:
+                combobox.blockSignals(True)
+                if isinstance(value, str):
+                    combobox.setCurrentText(value)
+                elif isinstance(value, int):
+                    combobox.setCurrentIndex(value)
+                combobox.blockSignals(False)
+
+        # 更新API和模型设置，使用直接设置，不触发任何信号
+        if "api" in actual_chat_history:
+            if hasattr(self, 'chat_api_combo') and self.chat_api_combo is not None:
+                index = self.chat_api_combo.findText(actual_chat_history["api"])
+                if index != -1:
+                    set_combobox_value(self.chat_api_combo, index)
+                    logger.info(f"成功设置API: {actual_chat_history['api']}")
+
+        if "model" in actual_chat_history:
+            if hasattr(self, 'chat_model_combo') and self.chat_model_combo is not None:
+                set_combobox_value(self.chat_model_combo, actual_chat_history["model"])
+                logger.info(f"成功设置模型: {actual_chat_history['model']}")
+
+        if "temperature" in actual_chat_history:
+            if hasattr(self, 'chat_temperature_spin') and self.chat_temperature_spin is not None:
+                self.chat_temperature_spin.setValue(actual_chat_history["temperature"])
+                logger.info(f"成功设置温度: {actual_chat_history['temperature']}")
+
+        # 显示成功消息
+        success_text = i18n.translate("success")
+        chat_history_loaded_text = i18n.translate("chat_history_loaded")
+        chat_history_loaded_text = chat_history_loaded_text.format(path=file_path)
+        QMessageBox.information(
+            self,
+            success_text,
+            chat_history_loaded_text,
+        )
+        logger.info("聊天历史加载完成")
 
     def export_chat_history_to_pdf(self):
         """
@@ -994,42 +1161,56 @@ class ChatTabWidget(QWidget):
                 i18n.translate("pdf_export_failed", error=str(e)),
             )
 
-    def _save_standard_chat_history(self, model):
+    def _save_standard_chat_history(self, model, is_clearing=False):
         """
         保存标准聊天历史到历史管理器
 
         Args:
             model: 模型名称
+            is_clearing: 是否是在清空历史时保存
         """
         try:
-            from utils.chat_history_manager import ChatHistoryManager
+            # 只有当聊天历史中有至少一条消息时，才保存到历史列表中
+            if len(self.standard_chat_history_messages) > 0:
+                from utils.chat_history_manager import ChatHistoryManager
 
-            history_manager = ChatHistoryManager()
+                history_manager = ChatHistoryManager()
 
-            # 获取当前时间
-            from datetime import datetime
+                # 获取当前时间
+                from datetime import datetime
 
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # 获取当前HTML内容
-            def get_html_finished(html):
-                # 保存历史记录
-                history_manager.add_history(
-                    func_type="聊天",
-                    topic="",
-                    model1_name=model,
-                    model2_name="",
-                    api1=self.chat_api_combo.currentText(),
-                    api2="",
-                    rounds=len(self.standard_chat_history_messages),
-                    chat_content=html,
-                    start_time=current_time,
-                    end_time=current_time,
-                )
+                # 保存当前的just_cleared_history值，避免异步回调时被修改
+                current_just_cleared = self.just_cleared_history
 
-            self.chat_list_widget.chat_history_view.page().toHtml(get_html_finished)
+                # 获取当前HTML内容
+                def get_html_finished(html):
+                    # 保存历史记录，传递是否是新聊天的标记
+                    # 如果是清空历史时保存，不创建新记录，只更新现有记录
+                    history_manager.add_history(
+                        func_type="聊天",
+                        topic="",
+                        model1_name=model,
+                        model2_name="",
+                        api1=self.chat_api_combo.currentText(),
+                        api2="",
+                        rounds=len(self.standard_chat_history_messages),
+                        chat_content=html,
+                        start_time=current_time,
+                        end_time=current_time,
+                        is_new_chat=current_just_cleared and not is_clearing
+                    )
+                    
+                    # 只有在非清空历史时才重置标记
+                    if not is_clearing:
+                        self.just_cleared_history = False
 
-            logger.info(f"聊天历史已保存到历史管理器")
+                self.chat_list_widget.chat_history_view.page().toHtml(get_html_finished)
+
+                logger.info(f"聊天历史已保存到历史管理器")
+            else:
+                logger.info(f"聊天历史为空，不保存到历史管理器")
         except Exception as e:
             logger.error(f"保存聊天历史到历史管理器失败: {str(e)}")
 
@@ -1040,13 +1221,24 @@ class ChatTabWidget(QWidget):
         # 重置AI响应状态
         self.is_ai_responding = False
         self.pending_messages = []
-
+        
+        # 清空历史前，先保存当前的聊天历史，结束一条聊天历史记录
+        if len(self.standard_chat_history_messages) > 0:
+            # 获取当前模型信息
+            model = self.chat_model_combo.currentText()
+            # 保存当前聊天历史，传递is_clearing=True参数
+            self._save_standard_chat_history(model, is_clearing=True)
+        
         # 清除聊天历史
         self.chat_list_widget.clear()
         self.standard_chat_history_messages = []
         QMessageBox.information(
             self, i18n.translate("success"), i18n.translate("chat_history_cleared")
         )
+        
+        # 设置标记，表示刚刚清空了历史，下次输入需要创建新记录
+        self.just_cleared_history = True
+        logger.info("聊天历史已清空，当前聊天历史记录已结束，下次输入将创建新记录")
 
     def reinit_ui(self):
         """

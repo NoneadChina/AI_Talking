@@ -989,6 +989,9 @@ class ChatHistoryPanel(QWidget):
             
             // 初始初始化
             initMessageActions();
+            
+            // 将函数暴露到全局作用域，以便语言切换时可以调用
+            window.initMessageActions = initMessageActions;
         </script>
         </body>
         </html>
